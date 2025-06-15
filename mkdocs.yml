@@ -1,0 +1,13 @@
+site_name: EnergiQ Agent
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tabs
+plugins:
+  - search
+  - tags
+  - mknotebooks
+
+nav:
+  - Home: index.md
