@@ -8,7 +8,7 @@ class Critic(BaseAgent):
 
     def prompt(self) -> str:
         return """
-        Role Description:
+        /no_think Role Description:
 
         You are the Power Grid Critic. Your role is to rigorously evaluate the effectiveness of an executed action plan by analyzing the initial network state (before actions), the proposed action plan, and the resulting network state (after actions). Your goal is to provide clear, actionable feedback to the Planner.
         

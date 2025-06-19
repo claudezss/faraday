@@ -31,9 +31,9 @@ def get_network_status(net) -> dict:
     }
 
 
-planner = Planner(reasoning_effort="high")
+planner = Planner(reasoning_effort="high", model="qwen/qwen3-32b")
 executor = Executor()
-critic = Critic()
+critic = Critic(model="qwen/qwen3-32b")
 
 net = pp.from_json("D:\\Dev\\repo\\EnergiQ-Agent\\data\\networks\\cigre_mv\\net.json")
 
@@ -43,22 +43,35 @@ plan = planner.run(state)
 
 print(plan)
 
-execution_result = executor.run(plan)
+for i in range(10):
+    execution_result = executor.run(plan)
 
-print(execution_result)
+    print(execution_result)
 
-new_state = json.loads(open(execution_result).read())
+    new_state = json.loads(open(execution_result).read())
 
+    feedback = critic.run(
+        f"""
+        initial_network_state_dict: {state}
+        
+        executed_action_dict: {plan}
+        
+        final_network_state_dict: {new_state}
+        """
+    )
+    print(feedback)
 
-feedback = critic.run(
-    f"""
-    initial_network_state_dict: {state}
+    plan = planner.run(
+        f"""
+    Network State after executing action: {new_state}
     
-    executed_action_dict: {plan}
-    
-    final_network_state_dict: {new_state}
-    
+    Critic Feedback:
+    {feedback}
     """
-)
+    )
 
-print(feedback)
+    print(plan)
+
+    state = new_state
+
+    print(f"Iter {i}")
