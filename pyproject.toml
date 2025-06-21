@@ -7,6 +7,10 @@ requires-python = ">=3.12"
 dependencies = [
     "google-genai>=1.20.0",
     "gymnasium>=1.1.1",
+    "langchain[anthropic,openai]>=0.3.25",
+    "langgraph>=0.4.8",
+    "langgraph-cli[inmem]>=0.3.3",
+    "langgraph-swarm>=0.0.11",
     "mcp[cli]>=1.9.4",
     "numba>=0.61.2",
     "pandapower>=3.1.1",
@@ -15,7 +19,8 @@ dependencies = [
     "torch>=2.7.1",
 ]
 
-
+[tool.setuptools]
+packages = ["energiq_agent"]
 
 [dependency-groups]
 dev = [
