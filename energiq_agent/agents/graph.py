@@ -11,6 +11,7 @@ from langchain_openai import ChatOpenAI
 from typing import Annotated, Optional
 
 from langchain_core.runnables import RunnableLambda
+from langgraph.checkpoint.memory import MemorySaver
 from typing_extensions import TypedDict
 from langgraph.types import Command
 from langgraph.graph import StateGraph
@@ -50,6 +51,8 @@ class State(TypedDict):
     log: Optional[list[str]]
     iter: int
 
+
+memory = MemorySaver()
 
 llm = ChatOpenAI(
     base_url="http://localhost:11434/v1/", api_key="EMPTY", model="qwen3:32b"
@@ -237,14 +240,20 @@ def condition_fn(state: State):
         return "end"
 
 
-workflow = StateGraph(State)
-workflow.add_node("cache_network", cache_network)
-workflow.add_node("planner", RunnableLambda(planner))
-workflow.add_node("executor", executor)
-workflow.add_node("critic", RunnableLambda(critic))
-workflow.set_entry_point("cache_network")
-workflow.add_edge("cache_network", "planner")
-workflow.add_edge("planner", "executor")
-workflow.add_edge("executor", "critic")
-workflow.add_conditional_edges("critic", condition_fn)
-graph = workflow.compile()
+def get_workflow():
+    workflow = StateGraph(State)
+    workflow.add_node("cache_network", cache_network)
+    workflow.add_node("planner", RunnableLambda(planner))
+    workflow.add_node("executor", executor)
+    workflow.add_node("critic", RunnableLambda(critic))
+    workflow.set_entry_point("cache_network")
+    workflow.add_edge("cache_network", "planner")
+    workflow.add_edge("planner", "executor")
+    workflow.add_edge("executor", "critic")
+    workflow.add_conditional_edges("critic", condition_fn)
+    return workflow
+
+
+if __name__ == "__main__":
+    workflow = get_workflow()
+    graph = workflow.compile()
