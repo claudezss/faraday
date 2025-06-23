@@ -1,7 +1,7 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "agent": "./energiq_agent/agents/graph.py:graph"
+    "agent": "./energiq_agent/langgraph_dev.py:graph"
   },
   "env": ".env",
   "image_distro": "wolfi"
