@@ -8,14 +8,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from langchain_openai import ChatOpenAI
-from typing import Annotated, Optional
 
 from langchain_core.runnables import RunnableLambda
 from langgraph.checkpoint.memory import MemorySaver
-from typing_extensions import TypedDict
+
 from langgraph.types import Command
 from langgraph.graph import StateGraph
-from langgraph.graph.message import add_messages
+from energiq_agent.schemas import State
 import shutil
 import json
 from energiq_agent import DATA_DIR
@@ -36,26 +35,10 @@ from energiq_agent.tools.pandapower import (
     add_battery,
 )
 
-
-class State(TypedDict):
-    network_file_path: str
-    reason_the_violation_occurred: Optional[str]
-    editing_network_file_path: Optional[str]
-    messages: Annotated[list, add_messages]
-    network: Optional[pp.pandapowerNet]
-    work_dir: Optional[str]
-    action_plan: Optional[str]
-    violation_before_action: Optional[dict]
-    violation_after_action: Optional[dict]
-    feedback: Optional[str]
-    log: Optional[list[str]]
-    iter: int
-
-
 memory = MemorySaver()
 
 llm = ChatOpenAI(
-    base_url="http://localhost:11434/v1/", api_key="EMPTY", model="qwen3:32b"
+    base_url="http://192.168.68.62:11434/v1/", api_key="EMPTY", model="qwen3:32b"
 )
 
 tools = [update_switch_status, curtail_load, add_battery]
@@ -95,11 +78,11 @@ def planner(state: State):
         {"role": "user", "content": f"network status: {status}"},
     ]
 
-    if state.get("reason_the_violation_occurred", None) is not None:
+    if state.get("human_guidance", None) is not None:
         messages.append(
             {
                 "role": "user",
-                "content": f"This is the reason the violation occurred: {state['reason_the_violation_occurred']}",
+                "content": f"This is the reason the huma guidance: {state['human_guidance']}",
             }
         )
 
@@ -113,7 +96,8 @@ def planner(state: State):
         messages.append(
             {
                 "role": "user",
-                "content": f"This is the action feedback from critic: {state['feedback']}. \n Please consider this feedback and give new complete action plan.",
+                "content": f"This is the action feedback from critic: {state['feedback']}. \n "
+                f"Please consider this feedback and give new complete action plan.",
             }
         )
 
@@ -181,7 +165,7 @@ def executor(state: State):
         ],
     }
 
-    pp.to_json(network, work_dir / "editing_network_file_path")
+    pp.to_json(network, work_dir / state["editing_network_file_path"])
 
     with open(work_dir / "status_after_action.json", "w") as f:
         json.dump(status, f)

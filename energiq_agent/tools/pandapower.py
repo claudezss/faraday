@@ -1,6 +1,33 @@
+from pathlib import Path
 from typing import Any
-
 import pandapower as pp
+import json
+
+
+def load_action_log(network_path: str) -> list[dict]:
+    log_path = Path(network_path).parent / "action_log.json"
+    if log_path.exists():
+        with open(log_path, "r") as f:
+            logs = json.load(f)
+    else:
+        logs = []
+    return logs
+
+
+def record_action(network_path: str, log: dict) -> None:
+    logs = load_action_log(network_path)
+    log_path = Path(network_path).parent / "action_log.json"
+    logs += [log]
+    with open(log_path, "+w") as f:
+        json.dump(logs, f)
+    return None
+
+
+def rest_action_log(network_path: str) -> None:
+    log_path = Path(network_path).parent / "action_log.json"
+    with open(log_path, "+w") as f:
+        json.dump([], f)
+    return None
 
 
 def read_network(network_path: str) -> pp.pandapowerNet:
@@ -82,24 +109,6 @@ def get_line_status(net: pp.pandapowerNet) -> list[dict]:
     return line_loading_percent + trafo_loading_percent
 
 
-def update_switch_status(network_path, switch_name: str, closed: bool):
-    """
-    Reconfigure switch status, change switch status to closed or open.
-
-    Args:
-        network_path: the path to the network in editing.
-        switch_name: the name of the switch to be reconfigured.
-        closed: whether to close the switch.
-    """
-    net = pp.from_json(network_path)
-    net.switch.loc[net.switch.name == switch_name, "closed"] = closed
-    pp.to_json(net, network_path)
-
-    msg = f"Set switch {switch_name} to {'closed' if closed else 'open'}"
-
-    return {"action": "reconfigure_switch", "detail": msg}
-
-
 def get_network_status(
     network,
 ) -> dict[str, Any]:
@@ -107,7 +116,7 @@ def get_network_status(
     Get the status of the network.
 
     Args:
-        network: the pndapower network object..
+        network: the pandapower network object.
     """
     net = network
     pp.runpp(net)
@@ -128,7 +137,36 @@ def get_network_status(
     return status
 
 
-def curtail_load(network_path: str, load_name: str, curtail_percent: float):
+def update_switch_status(network_path, switch_name: str, closed: bool):
+    """
+    Reconfigure switch status, change switch status to closed or open.
+
+    Args:
+        network_path: the path to the network in editing.
+        switch_name: the name of the switch to be reconfigured.
+        closed: whether to close the switch.
+    """
+    msg = f"Set switch {switch_name} to {'closed' if closed else 'open'}"
+    log = {"action": "reconfigure_switch", "detail": msg}
+
+    logs = load_action_log(network_path)
+    if log in logs:
+        return {"action": "None", "detail": "This action has been executed before."}
+
+    net = pp.from_json(network_path)
+    net.switch.loc[net.switch.name == switch_name, "closed"] = closed
+
+    pp.to_json(net, network_path)
+    record_action(network_path, log)
+    return log
+
+
+def curtail_load(
+    network_path: str,
+    load_name: str,
+    curtail_percent: float,
+    bus_index: int = None,
+):
     """
     Curtails the load in an electrical network by reducing its power consumption by a specified percentage.
 
@@ -141,14 +179,28 @@ def curtail_load(network_path: str, load_name: str, curtail_percent: float):
         network_path: the path to the network in editing.
         load_name: the name of the load to be curtailed.
         curtail_percent: the percentage (%) of load power to curtail.
+        bus_index: the bus index of the load to be curtailed. If load_name is provided, this argument is ignored.
     """
-    net = pp.from_json(network_path)
-    net.load.loc[net.load.name == load_name, "p_mw"] *= 1 - curtail_percent / 100
-    pp.to_json(net, network_path)
-
     msg = f"Curtail load {load_name} by {curtail_percent}%"
+    log = {"action": "curtail_load", "detail": msg}
 
-    return {"action": "curtail_load", "detail": msg}
+    logs = load_action_log(network_path)
+
+    if log in logs:
+        return {"action": "None", "detail": "This action has been executed before."}
+
+    net = pp.from_json(network_path)
+    if load_name:
+        net.load.loc[net.load.name == load_name, "p_mw"] *= 1 - curtail_percent / 100
+    elif bus_index:
+        net.load.loc[net.load.bus == int(bus_index), "p_mw"] *= (
+            1 - curtail_percent / 100
+        )
+
+    pp.to_json(net, network_path)
+    record_action(network_path, log)
+
+    return log
 
 
 def add_battery(
@@ -163,6 +215,13 @@ def add_battery(
         max_energy_kw: the maximum energy capacity of the battery in kW.
         max_battery_count: the maximum number of batteries to be added.
     """
+    msg = f"Add {max_battery_count} batteries to bus {bus_index} with max energy {max_energy_kw} kW"
+    log = {"action": "add_battery", "detail": msg}
+    logs = load_action_log(network_path)
+
+    if log in logs:
+        return {"action": "None", "detail": "This action has been executed before."}
+
     net = pp.from_json(network_path)
     for i in range(max_battery_count):
         pp.create_storage(
@@ -171,11 +230,10 @@ def add_battery(
             p_mw=-max_energy_kw / 1000,
             max_e_mwh=max_energy_kw / 1000,
         )
+
     pp.to_json(net, network_path)
-
-    msg = f"Add {max_battery_count} batteries to bus {bus_index} with max energy {max_energy_kw} kW"
-
-    return {"action": "add_battery", "detail": msg}
+    record_action(network_path, log)
+    return log
 
 
 def run_powerflow(network_path: str):
