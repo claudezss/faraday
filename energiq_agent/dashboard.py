@@ -1,292 +1,151 @@
+import json
 from enum import Enum
 
-import streamlit as st
-import json
 import pandas as pd
 import pandapower as pp
-from langgraph.types import Command
+import streamlit as st
 from dataclasses import dataclass, field
 
-from energiq_agent.agents.graph import get_workflow, State
 from energiq_agent import ROOT_DIR
+from energiq_agent.agents.graph import get_workflow, State
 
-workflow = get_workflow()
-graph = workflow.compile()
+# --- Initialization ---
+wf = get_workflow()
+graph = wf.compile()
 
 WORKSPACE = ROOT_DIR.parent / "workspace"
-
 WORKSPACE_NETWORKS = WORKSPACE / "networks"
-
 WORKSPACE_NETWORKS.mkdir(parents=True, exist_ok=True)
 
 
 class Step(str, Enum):
-    view = "view"
-    plan = "plan"
-    execute = "execute"
-    critic = "critic"
-    done = "done"
+    VIEW = "view"
+    PLAN = "plan"
+    EXECUTE = "execute"
+    DONE = "done"
 
 
 @dataclass
-class SessionState:
-    step: Step = Step.view
-    action_plan: str = ""
-    action_log: list = field(default_factory=list)
+class AppSessionState:
+    step: Step = Step.VIEW
+    action_plan: list = field(default_factory=list)
+    summary: str = ""
     line_violations: pd.DataFrame = None
     voltage_violations: pd.DataFrame = None
-    line_violations_after_action: pd.DataFrame = None
-    voltage_violations_after_action: pd.DataFrame = None
     state: State = None
     net: pp.pandapowerNet = None
-    plan_generate_button_text: str = "Generate"
-    feedback: str = ""
     iter: int = 0
-    org_line_violation_count = 0
-    org_voltage_violation_count = 0
-    line_violation_count = 0
-    voltage_violation_count = 0
 
-    # block status
+    # UI control
     show_plan_section: bool = False
     show_execute_section: bool = False
-    show_critic_section: bool = False
 
 
-def initialize(session_state):
-    if not session_state:
-        return SessionState()
-    else:
-        return session_state
+def initialize_session_state():
+    if "app_state" not in st.session_state:
+        st.session_state.app_state = AppSessionState()
 
 
-st.session_state = initialize(st.session_state)
+initialize_session_state()
+app_state = st.session_state.app_state
 
-
-@st.dialog("Action Log")
-def action_log_dialog():
-    st.write(st.session_state.action_log)
-
-
-st.sidebar.write("## Violations")
-col1, col2 = st.sidebar.columns(2)
-col1.metric(
-    label="Thermal",
-    value=st.session_state.line_violation_count,
-    delta=st.session_state.line_violation_count
-    - st.session_state.org_line_violation_count,
-    delta_color="inverse",
-)
-st.session_state.org_line_violation_count = st.session_state.line_violation_count
-col2.metric(
-    label="Voltage",
-    value=st.session_state.voltage_violation_count,
-    delta=st.session_state.voltage_violation_count
-    - st.session_state.org_voltage_violation_count,
-    delta_color="inverse",
-)
-
-st.sidebar.write("## Action Logs")
-
-
-@st.dialog("Action Logs")
-def show_action_logs():
-    try:
-        with open(WORKSPACE_NETWORKS / "action_log.json", "r") as f:
-            logs = json.load(f)
-        for item in logs:
-            st.write(item)
-    except FileNotFoundError:
-        st.write("No logs found")
-
-
-act_logs = st.sidebar.button("Action Logs")
-
-if act_logs:
-    show_action_logs()
-
+# --- UI Components ---
 st.set_page_config(layout="wide")
 st.title("⚡ Interactive Power Grid Agent")
 
-# Upload grid JSON
+# File uploader
 uploaded_file = st.file_uploader("Upload pandapower JSON network", type=["json"])
 
-if uploaded_file and st.session_state.net is None:
+if uploaded_file and app_state.net is None:
     network_data = json.load(uploaded_file)
     net = pp.from_json_string(json.dumps(network_data))
-    pp.to_json(net, WORKSPACE_NETWORKS / "network.json")
-    st.session_state.net = net
-
-# State: Network Loaded
-if st.session_state.net is not None:
-    st.subheader("📊 Network Overview")
-    net = st.session_state.net
-    st.write(
-        f"🧵 Buses: {len(net.bus)}, 🔌 Lines: {len(net.line)}, 🔁 Switches: {len(net.switch)}"
+    network_file_path = WORKSPACE_NETWORKS / "network.json"
+    pp.to_json(net, str(network_file_path))
+    app_state.net = net
+    app_state.state = State(
+        network_file_path=str(network_file_path),
+        editing_network_file_path=str(network_file_path),
+        work_dir=str(WORKSPACE_NETWORKS.absolute()),
+        messages=[],
+        network=net,
+        iter=0,
     )
 
-    with st.spinner("Checking violations. Please wait...", show_time=True):
+if app_state.net is not None:
+    st.subheader("📊 Network Overview")
+    net = app_state.net
+    st.write(
+        f"Buses: {len(net.bus)}, Lines: {len(net.line)}, Switches: {len(net.switch)}"
+    )
+
+    with st.spinner("Checking for violations..."):
         pp.runpp(net)
-        st.session_state.line_violations = net.res_line[
-            net.res_line.loading_percent > 100
-        ]
-        st.session_state.voltage_violations = net.res_bus[
-            (net.res_bus.vm_pu > 1.05) | (net.res_bus.vm_pu < 0.95)
-        ]
-        st.session_state.org_line_violation_count = len(
-            st.session_state.line_violations
-        )
-        st.session_state.org_voltage_violation_count = len(
-            st.session_state.voltage_violations
-        )
-        st.session_state.line_violation_count = len(st.session_state.line_violations)
-        st.session_state.voltage_violation_count = len(
-            st.session_state.voltage_violations
-        )
-
-    with st.spinner("Plotting Network. Please wait...", show_time=True):
-        with st.expander("Network Plot (click to expand)"):
-            fig = pp.plotting.plotly.pf_res_plotly(net, auto_open=False)
-            st.plotly_chart(fig, use_container_width=False)
-
-    if st.session_state.line_violations is not None:
-        st.write("Thermal Violations (if any):")
-        st.dataframe(st.session_state.line_violations)
-
-    if st.session_state.voltage_violations is not None:
-        st.write("Voltage Violations (if any):")
-        st.dataframe(st.session_state.voltage_violations)
-
-    # Planner Step
-    st.subheader(f"🧠 Planner Suggestions (iter {st.session_state.iter})")
-
-    if st.session_state.step == "view":
-        if st.button("Start Planning"):
-            st.session_state.step = Step.plan
-            st.session_state.show_plan_section = True
-            st.rerun()
-
-    if st.session_state.show_plan_section:
-        st.session_state.state = State(
-            network_file_path="network.json",
-            human_guidance="",
-            editing_network_file_path=str(WORKSPACE_NETWORKS / "network.json"),
-            messages=[],
-            network=pp.from_json(WORKSPACE_NETWORKS / "network.json"),
-            work_dir=str(WORKSPACE_NETWORKS.absolute()),
-            action_plan="",
-            violation_before_action=None,
-            violation_after_action=None,
-            feedback=st.session_state.feedback,
-            log=st.session_state.action_log,
-            iter=st.session_state.iter,
-        )
-
-        with st.form("planner_form"):
-            st.write("Inputs")
-            helper = st.text_area(
-                "Provide a helper text to guide the planner (Optional)"
-            )
-            if st.session_state.feedback:
-                critic_feedback = st.text_area(
-                    "Critic Feedback", value=st.session_state.feedback, height=400
-                )
-            else:
-                critic_feedback = ""
-
-            submit = st.form_submit_button(
-                st.session_state.plan_generate_button_text,
-            )
-
-            if submit:
-                st.session_state.state["human_guidance"] = helper
-                st.session_state.state["feedback"] = critic_feedback
-
-                with st.spinner("Generating action plan", show_time=True):
-                    state_update: Command = graph.nodes["planner"].invoke(
-                        st.session_state.state
-                    )
-                st.session_state.action_plan = state_update.update["action_plan"]
-                st.session_state.state.update(state_update.update)
-                st.session_state.plan_generate_button_text = "Regenerate"
-
-    if st.session_state.action_plan:
-        st.subheader("Action Plan:")
-        with st.form("planner_review"):
-            action_plan = st.text_area(
-                "Review and modify the action plan (Optional)",
-                value=st.session_state.action_plan,
-                height=400,
-            )
-            execute_actions = st.form_submit_button("Execute Actions")
-
-            if execute_actions:
-                st.session_state.action_plan = action_plan
-                st.session_state.state["action_plan"] = action_plan
-                st.session_state.step = Step.execute
-                st.session_state.action_log.append(st.session_state.action_plan)
-                with st.spinner("Executing", show_time=True):
-                    state_update = graph.nodes["executor"].invoke(
-                        st.session_state.state
-                    )
-                st.session_state.show_execute_section = True
-                st.session_state.state.update(state_update.update)
-                st.success("Done!")
-
-    # Executor Step
-    if st.session_state.show_execute_section and st.session_state.action_plan:
-        st.subheader("⚙️ New Network Status")
-
-        st.write(st.session_state.state["action_plan"])
-
-        st.session_state.show_critic_section = True
-
-        st.session_state.step = Step.critic
-
-        net = pp.from_json(WORKSPACE_NETWORKS / "network.json")
-
-        pp.runpp(net)
-
-        st.session_state.line_violations_after_action = net.res_line[
-            net.res_line.loading_percent > 100
-        ]
-        st.session_state.voltage_violations_after_action = net.res_bus[
+        app_state.line_violations = net.res_line[net.res_line.loading_percent > 100]
+        app_state.voltage_violations = net.res_bus[
             (net.res_bus.vm_pu > 1.05) | (net.res_bus.vm_pu < 0.95)
         ]
 
-        if st.session_state.line_violations_after_action is not None:
-            st.write("After Action Thermal Violations (if any):")
-            st.dataframe(st.session_state.line_violations_after_action)
+    with st.expander("Initial Network Plot"):
+        fig = pp.plotting.plotly.pf_res_plotly(net, auto_open=False)
+        st.plotly_chart(fig, use_container_width=True)
 
-        if st.session_state.voltage_violations_after_action is not None:
-            st.write("After Action Voltage Violations (if any):")
-            st.dataframe(st.session_state.voltage_violations_after_action)
+    st.write("Initial Thermal Violations:")
+    st.dataframe(app_state.line_violations)
+    st.write("Initial Voltage Violations:")
+    st.dataframe(app_state.voltage_violations)
 
-        with st.expander("Network Plot (click to expand)"):
-            fig = pp.plotting.plotly.pf_res_plotly(net, auto_open=False)
-            st.plotly_chart(fig, use_container_width=False)
+    st.subheader(f"🧠 Planner (Iteration {app_state.iter + 1})")
 
-    # Critic Step
-    if st.session_state.show_critic_section:
-        st.subheader("🧠 Critic Feedback")
+    if st.button("Generate and Execute Plan"):
+        app_state.step = Step.PLAN
+        app_state.iter += 1
 
-        if st.button("Judge Action Plan"):
-            with st.spinner("Judging action plan...", show_time=True):
-                state_update = graph.nodes["critic"].invoke(st.session_state.state)
+        with st.spinner(f"Running Planner and Executor (Attempt {app_state.iter})..."):
+            final_state = graph.invoke(app_state.state)
 
-            st.session_state.state.update(state_update.update)
-            st.session_state.feedback = state_update.update["feedback"]
+            app_state.state.update(final_state)
+            app_state.action_plan = final_state.get("action_plan", [])
+            app_state.summary = final_state.get("summary", "")
+            app_state.show_execute_section = True
 
-            with st.container():
-                st.write(f"Critic Feedback: {st.session_state.feedback}")
+    if app_state.show_execute_section:
+        st.subheader("📝 Executed Action Plan")
+        st.json(app_state.action_plan)
 
-            if (
-                len(st.session_state.state["violation_after_action"]["voltage"]) > 0
-                or len(st.session_state.state["violation_after_action"]["thermal"]) > 0
-            ):
-                if st.button("Generate New Plan"):
-                    st.session_state.step = Step.plan
-                    st.session_state.iter += 1
-            else:
-                st.session_state.step = Step.done
-                st.write("No violations found!")
+        st.subheader("⚙️ Network Status After Execution")
+
+        final_net = pp.from_json(app_state.state["editing_network_file_path"])
+        pp.runpp(final_net)
+
+        line_violations_after = final_net.res_line[
+            final_net.res_line.loading_percent > 100
+        ]
+        voltage_violations_after = final_net.res_bus[
+            (final_net.res_bus.vm_pu > 1.05) | (final_net.res_bus.vm_pu < 0.95)
+        ]
+
+        st.write("Thermal Violations After Execution:")
+        st.dataframe(line_violations_after)
+        st.write("Voltage Violations After Execution:")
+        st.dataframe(voltage_violations_after)
+
+        with st.expander("Final Network Plot"):
+            fig = pp.plotting.plotly.pf_res_plotly(final_net, auto_open=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+        if app_state.summary:
+            st.subheader("✅ Summary of Actions")
+            st.markdown(app_state.summary)
+            app_state.step = Step.DONE
+
+        elif line_violations_after.empty and voltage_violations_after.empty:
+            st.success("All violations resolved successfully!")
+            app_state.step = Step.DONE
+
+        elif app_state.state["iter"] >= 3:
+            st.warning("Max iterations reached. Could not resolve all violations.")
+            app_state.step = Step.DONE
+        else:
+            st.info(
+                "Violations remain. Click 'Generate and Execute Plan' to try again."
+            )

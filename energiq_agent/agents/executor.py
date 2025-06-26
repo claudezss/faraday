@@ -1,48 +1,51 @@
-from langgraph.graph.graph import CompiledGraph
-from langgraph.prebuilt import create_react_agent
+from typing import List, Dict, Any
 
 from energiq_agent.tools.pandapower import (
     curtail_load,
     add_battery,
     update_switch_status,
-    run_powerflow,
-    get_network_status,
 )
 
-PROMPT = """
-/no_think You will receive the action plan from the power grid operator.
-You need to follow the action plan to resolve the violations in the network.
-You should use the network in editing to resolve the violations.
-You should use existing tools and you can ignore the actions that hasn't support in tools.
-Do not include any other text or explanation.
-
-**Never** Repeat the same tool call!
-"""
+# A mapping from tool names to the actual functions
+TOOL_MAPPING = {
+    "curtail_load": curtail_load,
+    "add_battery": add_battery,
+    "update_switch_status": update_switch_status,
+}
 
 
 class Executor:
-    @classmethod
-    def prompt(cls):
-        return PROMPT
+    @staticmethod
+    def execute(
+        network_path: str, tool_calls: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Executes a list of tool calls and returns the list of executed actions.
 
-    @classmethod
-    def create(
-        cls, model, additional_tools: list = None, *args, **kwargs
-    ) -> CompiledGraph:
-        if additional_tools is None:
-            additional_tools = []
-        return create_react_agent(
-            model=model,
-            tools=[
-                curtail_load,
-                add_battery,
-                update_switch_status,
-                run_powerflow,
-                get_network_status,
-            ]
-            + additional_tools,
-            name="executor",
-            prompt=PROMPT,
-            *args,
-            **kwargs,
-        )
+        Args:
+            network_path: The path to the network file to be modified.
+            tool_calls: A list of tool calls from the planner.
+
+        Returns:
+            A list of the tool calls that were successfully executed.
+        """
+        if not tool_calls:
+            return []
+
+        executed_actions = []
+        for tool_call in tool_calls:
+            tool_name = tool_call.get("name")
+            arguments = tool_call.get("args")
+
+            if tool_name in TOOL_MAPPING:
+                tool_function = TOOL_MAPPING[tool_name]
+                # Add the network_path to the arguments for each tool call
+                arguments["network_path"] = network_path
+                try:
+                    tool_function(**arguments)
+                    executed_actions.append(tool_call)
+                except Exception as e:
+                    print(f"Error executing tool {tool_name}: {e}")
+            else:
+                # Handle the case where the tool is not found
+                print(f"Warning: Tool '{tool_name}' not found.")
+        return executed_actions

@@ -1,71 +1,46 @@
-"""LangGraph single-node graph template.
-
-Returns a predefined response. Replace logic and configuration as needed.
-"""
-
 from __future__ import annotations
 
-from pathlib import Path
-
-from langchain_openai import ChatOpenAI
-
-from langchain_core.runnables import RunnableLambda
-from langgraph.checkpoint.memory import MemorySaver
-
-from langgraph.types import Command
-from langgraph.graph import StateGraph
-from energiq_agent.schemas import State
-import shutil
 import json
-from energiq_agent import DATA_DIR
-from energiq_agent.agents.critic import Critic
-from energiq_agent.agents.executor import (
-    Executor,
-)
-from energiq_agent.agents.planner import Planner
-import pandapower as pp
-
+import shutil
+from pathlib import Path
 from uuid import uuid4
 
-from energiq_agent.tools.pandapower import (
-    read_network,
-    get_network_status,
-    update_switch_status,
-    curtail_load,
-    add_battery,
-)
+import pandapower as pp
+from langchain_core.runnables import RunnableLambda
+from langchain_openai import ChatOpenAI
+from langgraph.graph import StateGraph
+from langgraph.types import Command
 
-memory = MemorySaver()
+from energiq_agent import DATA_DIR
+from energiq_agent.agents.executor import Executor
+from energiq_agent.agents.planner import Planner
+from energiq_agent.schemas import State
+from energiq_agent.tools.pandapower import get_network_status, read_network
 
+# Initialize the language model
 llm = ChatOpenAI(
     base_url="http://192.168.68.62:11434/v1/", api_key="EMPTY", model="qwen3:32b"
 )
 
-tools = [update_switch_status, curtail_load, add_battery]
-
-_executor = Executor.create(llm)
-_critic = Critic.create(llm)
-
 
 def cache_network(state: State):
+    """Copies the initial network to a temporary editing directory."""
     short_uuid = str(uuid4())[:6]
     dst = DATA_DIR / "networks" / "editing" / short_uuid / "network.json"
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(state["network_file_path"], str(dst.absolute()))
     return Command(
         update={
-            "messages": state["messages"]
-            + [
-                {"role": "system", "content": f"Copied network to editing folder {dst}"}
-            ],
             "editing_network_file_path": str(dst.absolute()),
             "work_dir": str(dst.parent.absolute()),
             "network": read_network(str(dst.absolute())),
-        },
+            "executed_actions": [],  # Initialize the list of executed actions
+        }
     )
 
 
 def planner(state: State):
+    """Generates a structured plan (a list of tool calls) to fix violations."""
     work_dir = Path(state["work_dir"])
     state["network"] = read_network(state["editing_network_file_path"])
     status = get_network_status(state["network"])
@@ -73,37 +48,29 @@ def planner(state: State):
     with open(work_dir / "status_before_action.json", "w") as f:
         json.dump(status, f)
 
+    model_with_tools = llm.bind_tools(Planner.get_tools())
+
     messages = [
         {"role": "system", "content": Planner.prompt()},
-        {"role": "user", "content": f"network status: {status}"},
+        {"role": "user", "content": f"Network status: {status}`"},
     ]
 
-    if state.get("human_guidance", None) is not None:
+    if state.get("action_plan") and state.get("violation_after_action"):
         messages.append(
             {
                 "role": "user",
-                "content": f"This is the reason the huma guidance: {state['human_guidance']}",
+                "content": f"You previously tried this action plan: {state['action_plan']}",
+            }
+        )
+        messages.append(
+            {
+                "role": "user",
+                "content": f"However, it resulted in these violations: {state['violation_after_action']}. Please generate a new plan to fix them.",
             }
         )
 
-    if state.get("feedback", None) is not None:
-        messages.append(
-            {
-                "role": "user",
-                "content": f"This is your previous proposed actions: {state['log']}",
-            }
-        )
-        messages.append(
-            {
-                "role": "user",
-                "content": f"This is the action feedback from critic: {state['feedback']}. \n "
-                f"Please consider this feedback and give new complete action plan.",
-            }
-        )
-
-    plan = llm.invoke(messages).content
-    log = state.get("log", [])
-    log_entry = f"\n--- Planner Round {len(log) + 1} ---\n{plan}"
+    ai_message = model_with_tools.invoke(messages)
+    plan = ai_message.tool_calls
 
     violations = {
         "voltage": [
@@ -118,40 +85,28 @@ def planner(state: State):
         ],
     }
 
-    iter = state.get("iter", 0)
-
     return Command(
         update={
             "action_plan": plan,
-            "network": state["network"],
-            "log": log + [log_entry],
             "violation_before_action": violations,
-            "iter": iter + 1,
-        },
+        }
     )
 
 
 def executor(state: State):
-    action = state["action_plan"]
-
+    """Executes the structured plan and updates the network state."""
+    plan = state["action_plan"]
     work_dir = Path(state["work_dir"])
 
-    action_result = _executor.invoke(
-        {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": f"""
-            Network File Path: {state["editing_network_file_path"]}"
-            
-            Action Plan: {action}""",
-                },
-            ]
-        }
-    )
+    executed = Executor.execute(state["editing_network_file_path"], plan)
+
+    # Append the newly executed actions to the existing list
+    all_executed_actions = state.get("executed_actions", []) + executed
+
     network = read_network(state["editing_network_file_path"])
     pp.runpp(network)
     status = get_network_status(network)
+
     violations = {
         "voltage": [
             {"bus_idx": bus["index"], "v_mag_pu": bus["v_mag_pu"]}
@@ -172,69 +127,59 @@ def executor(state: State):
 
     return Command(
         update={
-            "action_result": action_result,
             "network": network,
             "violation_after_action": violations,
-        },
+            "executed_actions": all_executed_actions,
+            "iter": state.get("iter", 0) + 1,
+        }
     )
 
 
-def critic(state: State):
-    action = state["action_plan"]
+def summarizer(state: State):
+    """Generates a summary of the executed actions."""
+    executed_actions = state.get("executed_actions", [])
+    if not executed_actions:
+        summary = "No actions were executed."
+    else:
+        action_report = "\n".join(
+            [f"- {action['name']}({action['args']})" for action in executed_actions]
+        )
+        summary_prompt = f"Please provide a short summary of the following actions that were taken to resolve power grid violations:\n\n{action_report}"
+        summary = llm.invoke(summary_prompt).content
 
-    before_action_status = json.loads(
-        open(Path(state["work_dir"]) / "status_before_action.json").read()
-    )
-    after_action_status = json.loads(
-        open(Path(state["work_dir"]) / "status_after_action.json").read()
-    )
-
-    feedback = llm.invoke(
-        [
-            {"role": "system", "content": Critic.prompt()},
-            {
-                "role": "user",
-                "content": f"""
-                
-                Before action status: {before_action_status}"
-                
-                After action status: {after_action_status}"
-
-                Action Plan: {action}""",
-            },
-        ]
-    ).content
-
-    return Command(
-        update={
-            "feedback": feedback,
-        },
-    )
+    return Command(update={"summary": summary})
 
 
-def condition_fn(state: State):
+def should_continue(state: State):
+    """Determines the next step in the workflow."""
     if state["iter"] >= 3:
-        return "end"
+        return "summarizer"  # Go to summarizer if max iterations are reached
     if (
         len(state["violation_after_action"]["voltage"]) > 0
         or len(state["violation_after_action"]["thermal"]) > 0
     ):
         return "planner"
-    else:
-        return "end"
+    return "summarizer"  # Go to summarizer if violations are resolved
 
 
 def get_workflow():
+    """Builds the LangGraph workflow."""
     workflow = StateGraph(State)
     workflow.add_node("cache_network", cache_network)
     workflow.add_node("planner", RunnableLambda(planner))
     workflow.add_node("executor", executor)
-    workflow.add_node("critic", RunnableLambda(critic))
+    workflow.add_node("summarizer", RunnableLambda(summarizer))
+
     workflow.set_entry_point("cache_network")
     workflow.add_edge("cache_network", "planner")
     workflow.add_edge("planner", "executor")
-    workflow.add_edge("executor", "critic")
-    workflow.add_conditional_edges("critic", condition_fn)
+    workflow.add_conditional_edges(
+        "executor",
+        should_continue,
+        {"planner": "planner", "summarizer": "summarizer"},
+    )
+    workflow.add_edge("summarizer", "__end__")
+
     return workflow
 
 

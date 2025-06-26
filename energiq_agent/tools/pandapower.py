@@ -137,7 +137,7 @@ def get_network_status(
     return status
 
 
-def update_switch_status(network_path, switch_name: str, closed: bool):
+def update_switch_status(network_path: str, switch_name: str, closed: bool):
     """
     Reconfigure switch status, change switch status to closed or open.
 
