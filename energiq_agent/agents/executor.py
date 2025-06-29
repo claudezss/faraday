@@ -1,105 +1,51 @@
-from qwen_agent.agents import Assistant
-from qwen_agent.utils.output_beautify import typewriter_print
-import json
-import re
+from typing import List, Dict, Any
+
+from energiq_agent.tools.pandapower import (
+    curtail_load,
+    add_battery,
+    update_switch_status,
+)
+
+# A mapping from tool names to the actual functions
+TOOL_MAPPING = {
+    "curtail_load": curtail_load,
+    "add_battery": add_battery,
+    "update_switch_status": update_switch_status,
+}
 
 
 class Executor:
-    bot: Assistant
-    history: list[dict[str, str]]
-
-    def __init__(
-        self,
-        top_p: float = 0.8,
-    ):
-        llm_cfg = {
-            "model": "qwen3:32b",
-            "model_server": "http://localhost:11434/v1/",
-            "api_key": "",
-            "generate_cfg": {"top_p": top_p},
-        }
-
-        self.bot = Assistant(
-            llm=llm_cfg,
-            system_message=self.prompt,
-            function_list=self.tools,
-            files=self.files,
-        )
-        self.history = [{"role": "system", "content": self.prompt}]
-
-    def run(self, input_message: str) -> str:
-        response_plain_text = ""
-        messages = self.history + [{"role": "user", "content": input_message}]
-        for response in self.bot.run(messages=messages):
-            # Streaming output.
-            response_plain_text = typewriter_print(response, response_plain_text)
-
-        self.history = messages + [
-            {"role": "assistant", "content": response_plain_text}
-        ]
-
-        return self.extract_json_from_llm_response(response_plain_text)["path"]
-
     @staticmethod
-    def extract_json_from_llm_response(response: str) -> dict:
-        # Use regex to find the first JSON code block
-        match = re.search(r"```json\s*(\{.*?})\s*```", response, re.DOTALL)
-        if match:
-            json_str = match.group(1)
-            return json.loads(json_str)
-        else:
-            raise ValueError("No JSON block found in the response")
+    def execute(
+        network_path: str, tool_calls: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Executes a list of tool calls and returns the list of executed actions.
 
-    @property
-    def files(self) -> list[str]:
-        return []
+        Args:
+            network_path: The path to the network file to be modified.
+            tool_calls: A list of tool calls from the planner.
 
-    @property
-    def tools(self) -> list:
-        return [
-            {
-                "mcpServers": {
-                    "filesystem": {
-                        "command": "npx",
-                        "args": [
-                            "-y",
-                            "@modelcontextprotocol/server-filesystem",
-                            "D:\\Onedrive\\Yan\\study\\articles",
-                            "D:\\Dev\\repo\\EnergiQ-Agent\\data",
-                        ],
-                    },
-                    "simulator": {
-                        "command": "uv",
-                        "args": [
-                            "--directory",
-                            "D:\\Dev\\repo\\EnergiQ-Agent",
-                            "run",
-                            "energiq_agent\\simulator\\api.py",
-                        ],
-                    },
-                },
-            },
-            "code_interpreter",
-        ]
-
-    @property
-    def prompt(self) -> str:
-        return """
-        /no_think
-        You will receive the action plan from the power grid operator.
-        You need to follow the action plan to resolve the violations in the network.
-        You should use the network in editing to resolve the violations.
-        You can ignore the actions that hasn't support in tools.
-        After all actions are executed, get the network status and return status file path to user.
-        
-        Output Format:
-
-        Return ONLY the absolute path to the saved network status file and follow this format. 
-        
-        ```json
-        {
-            "path": ${state_path}
-        }
-        ```
-        Do not include any other text or explanation.
+        Returns:
+            A list of the tool calls that were successfully executed.
         """
+        if not tool_calls:
+            return []
+
+        executed_actions = []
+        for tool_call in tool_calls:
+            tool_name = tool_call.get("name")
+            arguments = tool_call.get("args")
+
+            if tool_name in TOOL_MAPPING:
+                tool_function = TOOL_MAPPING[tool_name]
+                # Add the network_path to the arguments for each tool call
+                arguments["network_path"] = network_path
+                try:
+                    tool_function(**arguments)
+                    executed_actions.append(tool_call)
+                except Exception as e:
+                    print(f"Error executing tool {tool_name}: {e}")
+            else:
+                # Handle the case where the tool is not found
+                print(f"Warning: Tool '{tool_name}' not found.")
+        return executed_actions

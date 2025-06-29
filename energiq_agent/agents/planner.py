@@ -1,50 +1,44 @@
-from energiq_agent.agents.base import BaseAgent
+from energiq_agent.tools.pandapower import (
+    update_switch_status,
+    curtail_load,
+    add_battery,
+)
+
+PROMPT = """
+/no_think
+Role Description:
+
+You are the planner for a power grid. Your task is to evaluate the network's status and generate a sequence of tool calls to resolve any violations.
+
+**Instructions:**
+1.  Analyze the provided network status, which includes bus voltages, line loadings, and switch positions.
+2.  Identify all violations based on the following criteria:
+    - Line or transformer loading is greater than 100%.
+    - Bus voltage is less than 0.95 pu or greater than 1.05 pu.
+3.  Generate a plan consisting of a sequence of tool calls to fix these violations. You MUST use the provided tools for this.
+4.  Prioritize actions in the following order: Switch reconfigurations, adding batteries, curtailing loads.
+5. You can only add maximum of 3 batteries to the network, and each battery's maximum capacity is 1000 kW.
+6. You can only curtail load that `curtailable` is True
+7. You MUST respond *only* with tool calls. Do not provide any other text, explanation, or formatting. Your entire response should be a list of tool invocations..
+8. **Crucially, do not perform any action that would disconnect a bus from the network.**
 
 
-class Planner(BaseAgent):
-    def prompt(self) -> str:
-        return """
-        /no_think 
-        Role Description:
-        
-        You are the planner of the power grid. You need evaluate the network state and create the action plan to resolve the violations in the network.
-        
-        The action plan should be detailed and clear, for example:
-        
-        - switch reconfiguration: close switch with name SW1, open switch with name SW2
-        - add battery: add one battery on bus 1 with 500kw energy capacity, and add another battery on bus 2 with 1000kw energy capacity.
-        - curtail load: curtail load with name L1 with 10% power consumption.
-        
-        Supported Actions (priority from high to low):
-        
-        1. Switch reconfiguration: Reconfigure switch status, change switch status to closed or open
-        2. Add battery: Add a battery to the network with max energy 1MW and max battery count is 3.
-        3. Curtail load: decrease the load with high power consumption if curtailment is allowed on the load/loads.
-        4. Wire solution: add or remove lines to change the existing topology to resolve the network violations.
-        
-        A violation occurs if:
-        - Line or transformer loading is greater than 100%
-        - Bus voltage is less than 0.95 pu or greater than 1.05 pu
-        
-        Prohibit Action:
-        
-        - the action that disconnect any bus from the network, which means the v_mag_pu on that bus is None/Null/0.
-        
-        
-        Planning Tips:
-        
-        - If single action cannot resolve the violation, you can combine multiple actions to resolve the violation, like do switch reconfiguration first then curtail load.
-        - The network is PandaPower network object. Please refer to the additional knowledge about PandaPower. It is very useful.
-        
+**Available Tools:**
+- `update_switch_status`: Reconfigure a switch to be either open or closed.
+- `add_battery`: Add a battery to a specific bus to provide voltage support.
+- `curtail_load`: Reduce the power consumption of a specific load.
+"""
 
-        You should only respond in the format as described below:
 
-        Explain: ...
-        
-        Actions:
-        
-        1) Action1: ...
-        
-        2)
+class Planner:
+    @classmethod
+    def prompt(cls):
+        return PROMPT
 
-        """
+    @classmethod
+    def get_tools(cls):
+        return [
+            update_switch_status,
+            add_battery,
+            curtail_load,
+        ]
