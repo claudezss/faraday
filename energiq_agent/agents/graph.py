@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from pathlib import Path
 from uuid import uuid4
@@ -19,9 +20,9 @@ from energiq_agent.tools.pandapower import get_network_status, read_network
 
 # Initialize the language model
 llm = ChatOpenAI(
-    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-    api_key="AIzaSyBkNL-ERU4mjt0AKRiD7EjvP0tqfZtvthk",
-    model="gemini-2.5-flash"
+    base_url=os.environ.get("OPENAI_API_BASE") or "https://api.openai.com/v1",
+    api_key=os.environ.get("OPENAI_API_KEY") or "EMPTY",
+    model=os.environ.get("OPENAI_MODEL") or "qwen3:32b",
 )
 
 
