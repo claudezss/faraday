@@ -19,7 +19,9 @@ from energiq_agent.tools.pandapower import get_network_status, read_network
 
 # Initialize the language model
 llm = ChatOpenAI(
-    base_url="http://192.168.68.62:11434/v1/", api_key="EMPTY", model="qwen3:32b"
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    api_key="AIzaSyBkNL-ERU4mjt0AKRiD7EjvP0tqfZtvthk",
+    model="gemini-2.5-flash"
 )
 
 
@@ -152,7 +154,7 @@ def summarizer(state: State):
 
 def should_continue(state: State):
     """Determines the next step in the workflow."""
-    if state["iter"] >= 3:
+    if state["iter"] >= 5:
         return "summarizer"  # Go to summarizer if max iterations are reached
     if (
         len(state["violation_after_action"]["voltage"]) > 0
