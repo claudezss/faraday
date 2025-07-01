@@ -10,6 +10,7 @@ from energiq_agent.agents.graph import (
     planner as run_planner,
     executor as run_executor,
     summarizer as run_summarizer,
+    explainer as run_explainer,
     cache_network,
 )
 from energiq_agent.schemas import State
@@ -207,6 +208,12 @@ def get_assistant_response(user_input: str):
                         chat_state.state.update(summarizer_command.update)
                         summary = chat_state.state.get("summary", "Execution complete.")
                         add_message("assistant", summary)
+
+                        explainer_command = run_explainer(chat_state.state)
+                        chat_state.state.update(explainer_command.update)
+                        explanation = chat_state.state.get("explanation", "")
+                        add_message("assistant", explanation)
+
                         chat_state.step = Step.EXECUTED
 
 
@@ -236,16 +243,27 @@ if chat_state.net is not None:
     # Display initial network state if no chat has started
 
     st.subheader("Initial Network Status")
+    init_net_col_1, init_net_col_2 = st.columns(2)
+
     display_violation_data(
-        st, chat_state.initial_line_violations, chat_state.initial_voltage_violations
+        init_net_col_1,
+        chat_state.initial_line_violations,
+        chat_state.initial_voltage_violations,
     )
-    with st.expander("Initial Network Plot"):
-        fig = pp.plotting.plotly.pf_res_plotly(chat_state.net, auto_open=False)
-        st.plotly_chart(fig, use_container_width=True)
+    init_net_col_1.write("Load Info:")
+    init_net_col_1.dataframe(chat_state.net.load)
+
+    fig = pp.plotting.plotly.pf_res_plotly(chat_state.net, auto_open=False)
+    init_net_col_2.write("Network Plot:")
+    init_net_col_2.plotly_chart(fig, use_container_width=True)
+    init_net_col_2.write("Generator Info:")
+    init_net_col_2.dataframe(chat_state.net.sgen)
+
     if not chat_state.messages:
         add_message(
             "assistant",
-            "Hello! I have loaded the network. I am ready to help you resolve any power grid violations. What would you like to do? For example, you can ask me to `fix the violations`.",
+            "Hello! I have loaded the network. I am ready to help you resolve any power grid violations. "
+            "What would you like to do? For example, you can ask me to `fix the violations`",
         )
 
     # Display chat messages

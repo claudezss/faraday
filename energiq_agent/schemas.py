@@ -19,6 +19,7 @@ class State(TypedDict):
     action_plan: Optional[List[Dict[str, Any]]]
     executed_actions: Optional[List[Dict[str, Any]]]
     summary: Optional[str]
+    explanation: Optional[str]
 
     # Control flow
     iter: int

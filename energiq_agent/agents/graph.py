@@ -20,7 +20,7 @@ from energiq_agent.tools.pandapower import get_network_status, read_network
 
 # Initialize the language model
 llm = ChatOpenAI(
-    base_url=os.environ.get("OPENAI_API_BASE") or "https://api.openai.com/v1",
+    base_url=os.environ.get("OPENAI_API_BASE") or "http://localhost:11434/v1/",
     api_key=os.environ.get("OPENAI_API_KEY") or "EMPTY",
     model=os.environ.get("OPENAI_MODEL") or "qwen3:32b",
 )
@@ -90,6 +90,7 @@ def planner(state: State):
 
     return Command(
         update={
+            "messages": state.get("messages", []) + messages,
             "action_plan": plan,
             "violation_before_action": violations,
         }
@@ -153,6 +154,60 @@ def summarizer(state: State):
     return Command(update={"summary": summary})
 
 
+def explainer(state: State):
+    """Generates an explanation of the actions and saves the conversation data."""
+    executed_actions = state.get("executed_actions", [])
+    if not executed_actions:
+        explanation = "No actions were executed, so no explanation is needed."
+    else:
+        action_report = "\n".join(
+            [f"- {action['name']}({action['args']})" for action in executed_actions]
+        )
+        explanation_prompt = f"""Please provide a brief explanation of why the following actions helped to resolve the power grid violations.
+
+Initial Violations:
+{state["violation_before_action"]}
+
+Executed Actions:
+{action_report}
+
+Final Violations:
+{state["violation_after_action"]}
+"""
+        explanation = llm.invoke(explanation_prompt).content
+
+    # --- Data Collection for Fine-tuning ---
+    training_data_path = DATA_DIR / "training_data.json"
+
+    # Create the conversation data structure
+
+    net = read_network(state["network_file_path"])
+    status = get_network_status(net)
+    conversation_data = {
+        "system_prompt": Planner.prompt(),
+        "user_prompt": f"""Network Status: 
+{status}
+""",
+        "assistant_response": {
+            "actions": executed_actions,
+            "explanation": explanation,
+        },
+    }
+
+    # Append the new data to the JSON file
+    if training_data_path.exists():
+        with open(training_data_path, "r+") as f:
+            data = json.load(f)
+            data.append(conversation_data)
+            f.seek(0)
+            json.dump(data, f, indent=2)
+    else:
+        with open(training_data_path, "w") as f:
+            json.dump([conversation_data], f, indent=2)
+
+    return Command(update={"explanation": explanation})
+
+
 def should_continue(state: State):
     """Determines the next step in the workflow."""
     if state["iter"] >= 5:
@@ -172,6 +227,7 @@ def get_workflow():
     workflow.add_node("planner", RunnableLambda(planner))
     workflow.add_node("executor", executor)
     workflow.add_node("summarizer", RunnableLambda(summarizer))
+    workflow.add_node("explainer", RunnableLambda(explainer))
 
     workflow.set_entry_point("cache_network")
     workflow.add_edge("cache_network", "planner")
@@ -181,7 +237,8 @@ def get_workflow():
         should_continue,
         {"planner": "planner", "summarizer": "summarizer"},
     )
-    workflow.add_edge("summarizer", "__end__")
+    workflow.add_edge("summarizer", "explainer")
+    workflow.add_edge("explainer", "__end__")
 
     return workflow
 
