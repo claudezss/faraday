@@ -285,34 +285,53 @@ Final Violations:
 """
         explanation = llm.invoke(explanation_prompt).content
 
-    # --- Data Collection for Fine-tuning ---
-    training_data_path = WORKSPACE / "training_data.json"
+    # --- Enhanced Data Collection for Fine-tuning ---
+    try:
+        from energiq_agent.training.data_collector import EnhancedTrainingDataCollector
 
-    # Create the conversation data structure
+        # Initialize enhanced collector
+        training_dir = WORKSPACE / "training_data_enhanced"
+        collector = EnhancedTrainingDataCollector(training_dir)
 
-    net = read_network(state["network_file_path"])
-    status = get_network_status(net)
-    conversation_data = {
-        "system_prompt": Planner.prompt(),
-        "user_prompt": f"""Network Status: 
+        # Collect comprehensive training sample
+        training_sample = collector.collect_training_sample(
+            state=state,
+            executed_actions=executed_actions,
+            explanation=explanation,
+            system_prompt=Planner.prompt(),
+        )
+
+        # Save in multiple formats
+        collector.save_training_sample(training_sample)
+
+    except Exception as e:
+        # Fallback to legacy method if enhanced collection fails
+        print(f"Enhanced training data collection failed: {e}")
+        training_data_path = WORKSPACE / "training_data.json"
+
+        net = read_network(state["network_file_path"])
+        status = get_network_status(net)
+        conversation_data = {
+            "system_prompt": Planner.prompt(),
+            "user_prompt": f"""Network Status: 
 {status}
 """,
-        "assistant_response": {
-            "actions": executed_actions,
-            "explanation": explanation,
-        },
-    }
+            "assistant_response": {
+                "actions": executed_actions,
+                "explanation": explanation,
+            },
+        }
 
-    # Append the new data to the JSON file
-    if training_data_path.exists():
-        with open(training_data_path, "r+") as f:
-            data = json.load(f)
-            data.append(conversation_data)
-            f.seek(0)
-            json.dump(data, f, indent=2)
-    else:
-        with open(training_data_path, "w") as f:
-            json.dump([conversation_data], f, indent=2)
+        # Append the new data to the JSON file
+        if training_data_path.exists():
+            with open(training_data_path, "r+") as f:
+                data = json.load(f)
+                data.append(conversation_data)
+                f.seek(0)
+                json.dump(data, f, indent=2)
+        else:
+            with open(training_data_path, "w") as f:
+                json.dump([conversation_data], f, indent=2)
 
     return Command(update={"explanation": explanation})
 

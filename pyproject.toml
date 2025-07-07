@@ -24,6 +24,7 @@ dependencies = [
 
 [project.scripts]
 energiq-agent = "energiq_agent.cli:main"
+energiq-agent-train = "energiq_agent.training.cli:main"
 
 [tool.setuptools]
 packages = ["energiq_agent"]

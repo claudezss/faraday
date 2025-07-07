@@ -1,4 +1,5 @@
 from pathlib import Path
+from dotenv import load_dotenv
 
 ROOT_DIR = Path(__file__).parent
 
@@ -9,3 +10,6 @@ WORKSPACE = ROOT_DIR.parent / "workspace"
 WORKSPACE_NETWORKS = WORKSPACE / "networks"
 
 WORKSPACE_NETWORKS.mkdir(parents=True, exist_ok=True)
+
+
+load_dotenv()
