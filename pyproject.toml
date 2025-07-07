@@ -16,10 +16,14 @@ dependencies = [
     "pandapower>=3.1.1",
     "pandas-stubs==2.2.3.250527",
     "qwen-agent[code-interpreter,gui,mcp,rag]>=0.0.26",
+    "rich>=13.9.4",
     "stable-baselines3>=2.6.0",
     "streamlit>=1.46.0",
     "torch>=2.7.1",
 ]
+
+[project.scripts]
+energiq-agent = "energiq_agent.cli:main"
 
 [tool.setuptools]
 packages = ["energiq_agent"]

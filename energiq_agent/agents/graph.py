@@ -12,7 +12,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph
 from langgraph.types import Command
 
-from energiq_agent import DATA_DIR
+from energiq_agent import WORKSPACE_NETWORKS, WORKSPACE
 from energiq_agent.agents.executor import Executor
 from energiq_agent.agents.planner import Planner
 from energiq_agent.schemas import State
@@ -34,7 +34,7 @@ llm = ChatOpenAI(
 def cache_network(state: State):
     """Copies the initial network to a temporary editing directory."""
     short_uuid = str(uuid4())[:6]
-    dst = DATA_DIR / "networks" / "editing" / short_uuid / "network.json"
+    dst = WORKSPACE_NETWORKS / "editing" / short_uuid / "network.json"
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(state["network_file_path"], str(dst.absolute()))
     return Command(
@@ -286,7 +286,7 @@ Final Violations:
         explanation = llm.invoke(explanation_prompt).content
 
     # --- Data Collection for Fine-tuning ---
-    training_data_path = DATA_DIR / "training_data.json"
+    training_data_path = WORKSPACE / "training_data.json"
 
     # Create the conversation data structure
 

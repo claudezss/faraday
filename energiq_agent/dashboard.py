@@ -5,20 +5,19 @@ import pandapower as pp
 import streamlit as st
 from dataclasses import dataclass, field
 
-from energiq_agent import ROOT_DIR
+from energiq_agent import WORKSPACE_NETWORKS
 from energiq_agent.agents.graph import (
     planner as run_planner,
     executor as run_executor,
     summarizer as run_summarizer,
     explainer as run_explainer,
     cache_network,
+    get_workflow,
 )
 from energiq_agent.schemas import State
 
 # --- Initialization ---
-WORKSPACE = ROOT_DIR.parent / "workspace"
-WORKSPACE_NETWORKS = WORKSPACE / "networks"
-WORKSPACE_NETWORKS.mkdir(parents=True, exist_ok=True)
+
 MAX_ITER = 5
 
 
@@ -26,6 +25,8 @@ class Step(str, Enum):
     START = "start"
     PLAN_GENERATED = "plan_generated"
     EXECUTED = "executed"
+    AUTO_RUNNING = "auto_running"
+    AUTO_COMPLETED = "auto_completed"
 
 
 @dataclass
@@ -36,6 +37,8 @@ class ChatSessionState:
     net: pp.pandapowerNet = None
     initial_line_violations: pd.DataFrame = field(default_factory=pd.DataFrame)
     initial_voltage_violations: pd.DataFrame = field(default_factory=pd.DataFrame)
+    auto_mode: bool = False
+    auto_result: dict = field(default_factory=dict)
 
 
 def initialize_session_state():
@@ -100,6 +103,97 @@ def format_plan_as_table(plan):
             }
         )
     return pd.DataFrame(table_data)
+
+
+def run_automated_workflow():
+    """Run the complete automated workflow without human intervention."""
+    chat_state.step = Step.AUTO_RUNNING
+
+    # Initialize progress tracking
+    progress_container = st.empty()
+    status_container = st.empty()
+
+    try:
+        # Get workflow
+        workflow = get_workflow()
+        graph = workflow.compile()
+
+        # Run the complete workflow
+        with st.spinner("Running automated violation fix workflow..."):
+            progress_container.info("🔧 Starting automated workflow...")
+
+            result = graph.invoke(chat_state.state)
+
+            # Store results
+            chat_state.auto_result = result
+            chat_state.state.update(result)
+
+            progress_container.success("✅ Automated workflow completed!")
+
+            # Display results immediately
+            executed_actions = result.get("executed_actions", [])
+            final_violations = result.get(
+                "violation_after_action", {"voltage": [], "thermal": []}
+            )
+            summary = result.get("summary", "")
+            explanation = result.get("explanation", "")
+
+            # Show executed actions
+            if executed_actions:
+                st.subheader("🔧 Executed Actions")
+                actions_df = format_plan_as_table(executed_actions)
+                if actions_df is not None:
+                    st.dataframe(actions_df, use_container_width=True)
+
+                actions_summary = (
+                    f"Executed {len(executed_actions)} actions: "
+                    + ", ".join(
+                        [
+                            f"{action.get('name', 'Unknown')}({list(action.get('args', {}).values())})"
+                            for action in executed_actions[:3]
+                        ]
+                    )
+                    + ("..." if len(executed_actions) > 3 else "")
+                )
+                add_message(
+                    "assistant",
+                    f"✅ Automated workflow completed!\n\n{actions_summary}",
+                )
+            else:
+                add_message(
+                    "assistant",
+                    "ℹ️ No actions were needed - network was already compliant.",
+                )
+
+            # Show summary and explanation
+            if summary:
+                add_message("assistant", f"📝 **Summary**: {summary}")
+
+            if explanation:
+                add_message("assistant", f"💡 **Explanation**: {explanation}")
+
+            # Final status message
+            total_violations = len(final_violations.get("voltage", [])) + len(
+                final_violations.get("thermal", [])
+            )
+            if total_violations == 0:
+                status_container.success("🎉 All violations successfully resolved!")
+                add_message("assistant", "🎉 All violations successfully resolved!")
+            else:
+                status_container.warning(
+                    f"⚠️ {total_violations} violations remaining after workflow completion."
+                )
+                add_message(
+                    "assistant",
+                    f"⚠️ {total_violations} violations remaining after workflow completion.",
+                )
+
+            chat_state.step = Step.AUTO_COMPLETED
+
+    except Exception as e:
+        progress_container.error(f"❌ Error in automated workflow: {str(e)}")
+        add_message("assistant", f"❌ Error in automated workflow: {str(e)}")
+        chat_state.step = Step.START
 
 
 def get_assistant_response(user_input: str):
@@ -240,8 +334,43 @@ if uploaded_file and chat_state.net is None:
     chat_state.initial_voltage_violations = volt_v
 
 if chat_state.net is not None:
-    # Display initial network state if no chat has started
+    # Mode selection
+    st.subheader("Workflow Mode")
+    col_mode_1, col_mode_2 = st.columns(2)
 
+    with col_mode_1:
+        if st.button(
+            "🤖 Run Automated Fix",
+            key="auto_mode_btn",
+            help="Automatically fix all violations without human intervention",
+            disabled=(
+                chat_state.step
+                in [Step.AUTO_RUNNING, Step.AUTO_COMPLETED, Step.PLAN_GENERATED]
+            ),
+            use_container_width=True,
+        ):
+            run_automated_workflow()
+            st.rerun()
+
+    with col_mode_2:
+        if st.button(
+            "💬 Interactive Mode",
+            key="interactive_mode_btn",
+            help="Step-by-step interactive mode with plan approval",
+            disabled=(chat_state.step in [Step.AUTO_RUNNING, Step.AUTO_COMPLETED]),
+            use_container_width=True,
+        ):
+            chat_state.step = Step.START
+            chat_state.auto_mode = False
+            if not chat_state.messages:
+                add_message(
+                    "assistant",
+                    "Hello! I'm ready to help you resolve power grid violations in interactive mode. "
+                    "You can ask me to `fix the violations` and I'll show you the plan for approval.",
+                )
+            st.rerun()
+
+    # Display initial network state if no chat has started
     st.subheader("Initial Network Status")
     init_net_col_1, init_net_col_2 = st.columns(2)
 
@@ -276,7 +405,7 @@ if chat_state.net is not None:
                 st.markdown(msg["content"], unsafe_allow_html=True)
 
     # After execution, show the side-by-side comparison
-    if chat_state.step == Step.EXECUTED:
+    if chat_state.step in [Step.EXECUTED, Step.AUTO_COMPLETED]:
         final_net = pp.from_json(chat_state.state["editing_network_file_path"])
         final_line_violations, final_voltage_violations = get_violations(final_net)
 
@@ -316,7 +445,12 @@ if chat_state.net is not None:
         chat_state.step = Step.START
         chat_state.state["iter"] = 0
 
-    # Chat input should be last
-    if prompt := st.chat_input("What should I do?"):
+    # Chat input should be last (disabled during automated mode)
+    chat_disabled = chat_state.step in [Step.AUTO_RUNNING, Step.AUTO_COMPLETED]
+    placeholder_text = (
+        "Automated mode active..." if chat_disabled else "What should I do?"
+    )
+
+    if prompt := st.chat_input(placeholder_text, disabled=chat_disabled):
         get_assistant_response(prompt)
         st.rerun()

@@ -9,6 +9,9 @@ def create_thermal_violation_network():
 
     # Add curtailable flag to loads
     net.load["curtailable"] = False
+    net.load["name"] = "Load_" + net.load.bus.astype(str)
+    net.line["name"] = range(len(net.line["name"]))
+    net.line["name"] = net.line["name"].astype(str)
 
     # Configure some loads as curtailable
     net.load.loc[net.load.bus.isin([4, 5, 9]), "curtailable"] = True

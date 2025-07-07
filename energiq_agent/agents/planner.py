@@ -5,7 +5,6 @@ from energiq_agent.tools.pandapower import (
 )
 
 PROMPT = """
-/no_think
 Role Description:
 
 You are the planner for a power grid. Your task is to evaluate the network's status and generate a sequence of tool calls to resolve any violations.

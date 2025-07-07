@@ -431,9 +431,7 @@ def curtail_load(
     return log
 
 
-def add_battery(
-    network_path: str, bus_index: int, max_energy_kw: float, max_battery_count: int
-):
+def add_battery(network_path: str, bus_index: int, max_energy_kw: float):
     """
     Add a battery to the network.
 
@@ -441,9 +439,8 @@ def add_battery(
         network_path: the path to the network in editing.
         bus_index: the index of the bus where the battery is to be added.
         max_energy_kw: the maximum energy capacity of the battery in kW.
-        max_battery_count: the maximum number of batteries to be added.
     """
-    msg = f"Add {max_battery_count} batteries to bus {bus_index} with max energy {max_energy_kw} kW"
+    msg = f"Add one battery to bus {bus_index} with max energy {max_energy_kw} kW"
     log = {"action": "add_battery", "detail": msg}
     logs = load_action_log(network_path)
 
@@ -451,13 +448,13 @@ def add_battery(
         return {"action": "None", "detail": "This action has been executed before."}
 
     net = pp.from_json(network_path)
-    for i in range(max_battery_count):
-        pp.create_storage(
-            net,
-            bus=bus_index,
-            p_mw=-max_energy_kw / 1000,
-            max_e_mwh=max_energy_kw / 1000,
-        )
+
+    pp.create_storage(
+        net,
+        bus=bus_index,
+        p_mw=-max_energy_kw / 1000,
+        max_e_mwh=max_energy_kw / 1000,
+    )
 
     pp.to_json(net, network_path)
     record_action(network_path, log)
