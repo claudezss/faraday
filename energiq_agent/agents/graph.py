@@ -15,6 +15,10 @@ from langgraph.types import Command
 from energiq_agent import WORKSPACE_NETWORKS, WORKSPACE
 from energiq_agent.agents.executor import Executor
 from energiq_agent.agents.planner import Planner
+from energiq_agent.agents.prompts import (
+    SUMMARIZER_PROMPT,
+    EXPLAINER_PROMPT,
+)
 from energiq_agent.schemas import State
 from energiq_agent.tools.pandapower import (
     get_network_status,
@@ -257,7 +261,7 @@ def summarizer(state: State):
         action_report = "\n".join(
             [f"- {action['name']}({action['args']})" for action in executed_actions]
         )
-        summary_prompt = f"Please provide a short summary of the following actions that were taken to resolve power grid violations:\n\n{action_report}"
+        summary_prompt = SUMMARIZER_PROMPT.format(action_report=action_report)
         summary = llm.invoke(summary_prompt).content
 
     return Command(update={"summary": summary})
@@ -272,17 +276,11 @@ def explainer(state: State):
         action_report = "\n".join(
             [f"- {action['name']}({action['args']})" for action in executed_actions]
         )
-        explanation_prompt = f"""Please provide a brief explanation of why the following actions helped to resolve the power grid violations.
-
-Initial Violations:
-{state["violation_before_action"]}
-
-Executed Actions:
-{action_report}
-
-Final Violations:
-{state["violation_after_action"]}
-"""
+        explanation_prompt = EXPLAINER_PROMPT.format(
+            violation_before_action=state["violation_before_action"],
+            action_report=action_report,
+            violation_after_action=state["violation_after_action"],
+        )
         explanation = llm.invoke(explanation_prompt).content
 
     # --- Enhanced Data Collection for Fine-tuning ---
@@ -313,9 +311,7 @@ Final Violations:
         status = get_network_status(net)
         conversation_data = {
             "system_prompt": Planner.prompt(),
-            "user_prompt": f"""Network Status: 
-{status}
-""",
+            "user_prompt": f"""Network Status: \n{status}\n""",
             "assistant_response": {
                 "actions": executed_actions,
                 "explanation": explanation,
