@@ -30,11 +30,7 @@ jobs:
 
     - name: Run linter (ruff)
       run: |
-        uv run ruff check .
-
-    - name: Run formatter check (ruff)
-      run: |
-        uv run ruff format --check .
+        uv run pre-commit run --all-files
 
     - name: Run tests
       run: |
