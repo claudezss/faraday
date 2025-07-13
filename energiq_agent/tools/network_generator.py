@@ -41,6 +41,26 @@ class NetworkGenerator:
                 load_type = row.get("type", "load")
                 net.load.loc[idx, "name"] = f"Load_{bus_name}_{load_type}_{idx}"
 
+        # Fill gen names
+        for idx, row in net.gen.iterrows():
+            if pd.isna(row.get("name")) or row.get("name") == "":
+                bus_name = (
+                    net.bus.loc[row.bus, "name"]
+                    if "name" in net.bus.columns
+                    else f"Bus_{row.bus}"
+                )
+                net.gen.loc[idx, "name"] = f"Gen_{bus_name}_{idx}"
+
+        # Fill sgen names
+        for idx, row in net.sgen.iterrows():
+            if pd.isna(row.get("name")) or row.get("name") == "":
+                bus_name = (
+                    net.bus.loc[row.bus, "name"]
+                    if "name" in net.bus.columns
+                    else f"Bus_{row.bus}"
+                )
+                net.sgen.loc[idx, "name"] = f"SyncGen_{bus_name}_{idx}"
+
         # Fill line names
         for idx, row in net.line.iterrows():
             if pd.isna(row.get("name")) or row.get("name") == "":
@@ -100,9 +120,13 @@ class NetworkGenerator:
         """Add voltage violations by modifying loads and generation."""
 
         severity_multipliers = {
-            "light": (0.96, 1.04, 1.2),  # (min_v, max_v, load_multiplier)
-            "medium": (0.92, 1.07, 1.5),
-            "severe": (0.88, 1.10, 2.0),
+            "light": (
+                0.96,
+                1.04,
+                1.15,
+            ),  # (min_v, max_v, load_multiplier) - more conservative
+            "medium": (0.92, 1.07, 1.3),
+            "severe": (0.88, 1.10, 1.6),
         }
 
         min_v, max_v, load_mult = severity_multipliers.get(
@@ -118,34 +142,25 @@ class NetworkGenerator:
         violation_buses = random.sample(candidate_buses, violation_count)
 
         for i, bus_idx in enumerate(violation_buses):
-            if i % 2 == 0:  # Create undervoltage
-                # Increase load to cause voltage drop
-                loads_at_bus = net.load[net.load.bus == bus_idx]
-                if len(loads_at_bus) > 0:
-                    for load_idx in loads_at_bus.index:
-                        net.load.loc[load_idx, "p_mw"] *= load_mult
-                        net.load.loc[load_idx, "q_mvar"] *= load_mult
-                        # Mark as curtailable for AI to fix
-                        net.load.loc[load_idx, "curtailable"] = True
-                else:
-                    # Create new high load
-                    pp.create_load(
-                        net,
-                        bus=bus_idx,
-                        p_mw=2.0 * load_mult,
-                        q_mvar=0.5 * load_mult,
-                        name=f"High_Load_Bus_{bus_idx}",
-                        curtailable=True,
-                    )
-            else:  # Create overvoltage
-                # Add generation to cause voltage rise
-                pp.create_sgen(
+            # Only create undervoltage violations (more solvable)
+            # Increase load to cause voltage drop
+            loads_at_bus = net.load[net.load.bus == bus_idx]
+            if len(loads_at_bus) > 0:
+                for load_idx in loads_at_bus.index:
+                    # Conservative load increase
+                    net.load.loc[load_idx, "p_mw"] *= load_mult
+                    net.load.loc[load_idx, "q_mvar"] *= load_mult
+                    # Mark as curtailable for AI to fix
+                    net.load.loc[load_idx, "curtailable"] = True
+            else:
+                # Create new moderate load
+                pp.create_load(
                     net,
                     bus=bus_idx,
-                    p_mw=1.0 * load_mult,
-                    q_mvar=0.2 * load_mult,
-                    name=f"DG_Bus_{bus_idx}",
-                    controllable=True,
+                    p_mw=1.0 * load_mult,  # More conservative
+                    q_mvar=0.3 * load_mult,
+                    name=f"High_Load_Bus_{bus_idx}",
+                    curtailable=True,
                 )
 
         return net
