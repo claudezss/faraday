@@ -15,6 +15,10 @@ from energiq_agent.agents.graph import (
     get_workflow,
 )
 from energiq_agent.schemas import State
+from energiq_agent.tools.pandapower import (
+    get_voltage_thresholds,
+    set_voltage_thresholds,
+)
 
 # --- Initialization ---
 
@@ -67,8 +71,9 @@ st.title("⚡ Interactive Power Grid Agent Chat")
 def get_violations(net):
     pp.runpp(net)
     line_violations = net.res_line[net.res_line.loading_percent > 100]
+    thresholds = get_voltage_thresholds()
     voltage_violations = net.res_bus[
-        (net.res_bus.vm_pu > 1.05) | (net.res_bus.vm_pu < 0.95)
+        (net.res_bus.vm_pu > thresholds.v_max) | (net.res_bus.vm_pu < thresholds.v_min)
     ]
     return line_violations, voltage_violations
 
@@ -310,6 +315,47 @@ def get_assistant_response(user_input: str):
 
                         chat_state.step = Step.EXECUTED
 
+
+# --- Voltage Threshold Configuration ---
+st.sidebar.header("⚙️ Configuration")
+
+# Voltage thresholds
+st.sidebar.subheader("Voltage Thresholds")
+current_thresholds = get_voltage_thresholds()
+
+v_max = st.sidebar.number_input(
+    "Maximum Voltage (p.u.)",
+    min_value=1.00,
+    max_value=1.20,
+    value=current_thresholds.v_max,
+    step=0.01,
+    format="%.2f",
+    help="Maximum allowed voltage in per unit",
+)
+
+v_min = st.sidebar.number_input(
+    "Minimum Voltage (p.u.)",
+    min_value=0.80,
+    max_value=1.00,
+    value=current_thresholds.v_min,
+    step=0.01,
+    format="%.2f",
+    help="Minimum allowed voltage in per unit",
+)
+
+# Update thresholds if they changed
+if v_max != current_thresholds.v_max or v_min != current_thresholds.v_min:
+    set_voltage_thresholds(v_max=v_max, v_min=v_min)
+    st.sidebar.success(f"✅ Updated thresholds: v_max={v_max}, v_min={v_min}")
+    # If network is loaded, refresh violation detection
+    if chat_state.net is not None:
+        line_v, volt_v = get_violations(chat_state.net)
+        chat_state.initial_line_violations = line_v
+        chat_state.initial_voltage_violations = volt_v
+
+st.sidebar.info(
+    f"Current: v_max={current_thresholds.v_max}, v_min={current_thresholds.v_min}"
+)
 
 # --- Main App Flow ---
 uploaded_file = st.file_uploader("Upload pandapower JSON network", type=["json"])

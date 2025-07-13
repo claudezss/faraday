@@ -14,7 +14,12 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from energiq_agent.agents.graph import get_workflow
 from energiq_agent.schemas import State
-from energiq_agent.tools.pandapower import get_network_status, read_network
+from energiq_agent.tools.pandapower import (
+    get_network_status,
+    read_network,
+    get_voltage_thresholds,
+    set_voltage_thresholds,
+)
 
 
 console = Console()
@@ -53,9 +58,11 @@ def print_violations(violations: Dict[str, Any], title: str = "Violations") -> N
         table.add_column("Severity", justify="center")
 
         for v in voltage_violations:
+            thresholds = get_voltage_thresholds()
             severity = (
                 "🔴 Critical"
-                if v["v_mag_pu"] > 1.1 or v["v_mag_pu"] < 0.9
+                if v["v_mag_pu"] > thresholds.high_violation_upper
+                or v["v_mag_pu"] < thresholds.high_violation_lower
                 else "🟡 Medium"
             )
             table.add_row(str(v["bus_idx"]), f"{v['v_mag_pu']:.3f}", severity)
@@ -144,11 +151,12 @@ def run_workflow(
     initial_status = get_network_status(net)
 
     # Extract initial violations
+    thresholds = get_voltage_thresholds()
     initial_violations = {
         "voltage": [
             {"bus_idx": bus["index"], "v_mag_pu": bus["v_mag_pu"]}
             for bus in initial_status.get("bus_status", [])
-            if bus["v_mag_pu"] > 1.05 or bus["v_mag_pu"] < 0.95
+            if bus["v_mag_pu"] > thresholds.v_max or bus["v_mag_pu"] < thresholds.v_min
         ],
         "thermal": [
             {"line_name": line["name"], "loading": line["loading_percent"]}
@@ -269,7 +277,30 @@ Examples:
         "--output", "-o", type=Path, help="Output directory for results (optional)"
     )
 
+    parser.add_argument(
+        "--v-max",
+        type=float,
+        default=1.05,
+        help="Maximum allowed voltage in per unit (default: 1.05)",
+    )
+
+    parser.add_argument(
+        "--v-min",
+        type=float,
+        default=0.95,
+        help="Minimum allowed voltage in per unit (default: 0.95)",
+    )
+
     args = parser.parse_args()
+
+    # Set voltage thresholds from command line arguments
+    set_voltage_thresholds(v_max=args.v_max, v_min=args.v_min)
+
+    # Display current voltage thresholds
+    console.print(
+        f"⚙️  Using voltage thresholds: v_max={args.v_max}, v_min={args.v_min}",
+        style="blue",
+    )
 
     # Validate network file
     if not validate_network_file(args.network_file):

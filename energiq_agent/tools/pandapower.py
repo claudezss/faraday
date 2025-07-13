@@ -5,6 +5,47 @@ import json
 
 from collections import defaultdict
 from enum import Enum
+from dataclasses import dataclass
+
+
+@dataclass
+class VoltageThresholds:
+    """Configuration class for voltage violation thresholds."""
+
+    v_max: float = 1.05  # Maximum allowed voltage in per unit
+    v_min: float = 0.95  # Minimum allowed voltage in per unit
+
+    # Severity thresholds
+    critical_high: float = 1.15
+    critical_low: float = 0.85
+    high_violation_upper: float = 1.1
+    high_violation_lower: float = 0.9
+    medium_violation_upper: float = 1.05
+    medium_violation_lower: float = 0.95
+
+
+# Global default voltage thresholds - can be overridden
+_DEFAULT_VOLTAGE_THRESHOLDS = VoltageThresholds()
+
+
+def set_voltage_thresholds(v_max: float = 1.05, v_min: float = 0.95) -> None:
+    """Set global voltage violation thresholds.
+
+    Args:
+        v_max: Maximum allowed voltage in per unit (default: 1.05)
+        v_min: Minimum allowed voltage in per unit (default: 0.95)
+    """
+    global _DEFAULT_VOLTAGE_THRESHOLDS
+    _DEFAULT_VOLTAGE_THRESHOLDS.v_max = v_max
+    _DEFAULT_VOLTAGE_THRESHOLDS.v_min = v_min
+    # Auto-adjust severity thresholds based on new limits
+    _DEFAULT_VOLTAGE_THRESHOLDS.medium_violation_upper = v_max
+    _DEFAULT_VOLTAGE_THRESHOLDS.medium_violation_lower = v_min
+
+
+def get_voltage_thresholds() -> VoltageThresholds:
+    """Get current voltage violation thresholds."""
+    return _DEFAULT_VOLTAGE_THRESHOLDS
 
 
 def load_action_log(network_path: str) -> list[dict]:
@@ -140,10 +181,11 @@ def get_network_status(
 
     if violations_only:
         # Filter for violations only
+        thresholds = get_voltage_thresholds()
         bus_status = [
             bus
             for bus in bus_status
-            if bus["v_mag_pu"] > 1.05 or bus["v_mag_pu"] < 0.95
+            if bus["v_mag_pu"] > thresholds.v_max or bus["v_mag_pu"] < thresholds.v_min
         ]
         line_status = [line for line in line_status if line["loading_percent"] > 100]
         # Only include loads/generators on buses with violations
@@ -262,15 +304,19 @@ def get_hierarchical_network_status(net: pp.pandapowerNet) -> dict[str, Any]:
     voltage_violations = []
     thermal_violations = []
 
+    thresholds = get_voltage_thresholds()
     for idx, (i, row) in enumerate(net.bus.iterrows()):
         v_mag = net.res_bus.vm_pu.iloc[idx]
-        if v_mag > 1.05 or v_mag < 0.95:
+        if v_mag > thresholds.v_max or v_mag < thresholds.v_min:
             voltage_violations.append(
                 {
                     "bus": i,
                     "name": row["name"],
                     "v_mag_pu": round(float(v_mag), 3),
-                    "severity": "high" if v_mag > 1.1 or v_mag < 0.9 else "medium",
+                    "severity": "high"
+                    if v_mag > thresholds.high_violation_upper
+                    or v_mag < thresholds.high_violation_lower
+                    else "medium",
                 }
             )
 
@@ -499,11 +545,15 @@ class ViolationSeverity(Enum):
 def get_violation_severity(violation_type: str, value: float) -> ViolationSeverity:
     """Determine violation severity based on type and value."""
     if violation_type == "voltage":
-        if value > 1.15 or value < 0.85:
+        thresholds = get_voltage_thresholds()
+        if value > thresholds.critical_high or value < thresholds.critical_low:
             return ViolationSeverity.CRITICAL
-        elif value > 1.1 or value < 0.9:
+        elif (
+            value > thresholds.high_violation_upper
+            or value < thresholds.high_violation_lower
+        ):
             return ViolationSeverity.HIGH
-        elif value > 1.05 or value < 0.95:
+        elif value > thresholds.v_max or value < thresholds.v_min:
             return ViolationSeverity.MEDIUM
         else:
             return ViolationSeverity.LOW
@@ -579,9 +629,10 @@ def get_graph_based_representation(net: pp.pandapowerNet) -> Dict[str, Any]:
     controllable_resources = []
 
     # Find violations
+    thresholds = get_voltage_thresholds()
     for idx, (i, row) in enumerate(net.bus.iterrows()):
         v_mag = net.res_bus.vm_pu.iloc[idx]
-        if v_mag > 1.05 or v_mag < 0.95:
+        if v_mag > thresholds.v_max or v_mag < thresholds.v_min:
             voltage_violations.append(
                 {
                     "id": f"viol_v_{i}",
@@ -768,9 +819,10 @@ def get_multi_level_representation(
     if level == RepresentationLevel.OVERVIEW:
         # Ultra-compact overview (50-100 tokens)
         violations = []
+        thresholds = get_voltage_thresholds()
         for idx, (i, row) in enumerate(net.bus.iterrows()):
             v_mag = net.res_bus.vm_pu.iloc[idx]
-            if v_mag > 1.05 or v_mag < 0.95:
+            if v_mag > thresholds.v_max or v_mag < thresholds.v_min:
                 violations.append({"bus": i, "v": round(float(v_mag), 2)})
 
         thermal_issues = 0
@@ -1125,7 +1177,8 @@ def get_optimized_network_status(
 
     for idx, (i, row) in enumerate(net.bus.iterrows()):
         v_mag = net.res_bus.vm_pu.iloc[idx]
-        if v_mag > 1.05 or v_mag < 0.95:
+        thresholds = get_voltage_thresholds()
+        if v_mag > thresholds.v_max or v_mag < thresholds.v_min:
             voltage_violations.append(
                 {
                     "bus": i,
