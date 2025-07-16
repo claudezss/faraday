@@ -1,10 +1,10 @@
-# EnergiQ-Agent
+# Faraday
 
 AI-powered power grid optimization system that automatically detects and resolves electrical network violations.
 
 ## Overview
 
-EnergiQ Agent is an intelligent power grid optimization system that combines advanced AI agents with power system analysis to automatically identify and resolve electrical network violations. The system uses LangGraph-based workflows and pandapower simulation to provide both automated and interactive solutions for power grid management.
+Faraday is an intelligent power grid optimization system that combines advanced AI agents with power system analysis to automatically identify and resolve electrical network violations. The system uses LangGraph-based workflows and pandapower simulation to provide both automated and interactive solutions for power grid management.
 
 ### Key Components
 
@@ -23,9 +23,9 @@ EnergiQ Agent is an intelligent power grid optimization system that combines adv
 ### Architecture
 
 The system follows a modular architecture with:
-- **Agents** (`energiq_agent/agents/`): AI workflow orchestration and planning
-- **Tools** (`energiq_agent/tools/`): Power grid utilities and analysis functions
-- **Training** (`energiq_agent/training/`): Data collection and model training capabilities
+- **Agents** (`faraday/agents/`): AI workflow orchestration and planning
+- **Tools** (`faraday/tools/`): Power grid utilities and analysis functions
+- **Training** (`faraday/training/`): Data collection and model training capabilities
 - **Test Networks** (`data/networks/`): Sample power grids including CIGRE test cases
 
 ## Installation
@@ -42,10 +42,10 @@ Run the automated workflow to fix violations in a power grid network:
 
 ```bash
 # Fix violations in a network file
-energiq-agent network.json
+faraday network.json
 
 # With verbose output and custom max iterations
-energiq-agent network.json --verbose --max-iterations 10
+faraday network.json --verbose --max-iterations 10
 ```
 
 **CLI Options:**
@@ -58,7 +58,7 @@ energiq-agent network.json --verbose --max-iterations 10
 Launch the Streamlit dashboard for interactive network analysis:
 
 ```bash
-streamlit run energiq_agent/dashboard.py
+streamlit run faraday/dashboard.py
 ```
 
 ### Development

@@ -424,7 +424,7 @@ class NetworkGenerator:
 ## Usage
 
 ```bash
-energiq-agent {network_file}
+faraday {network_file}
 ```
 """
 

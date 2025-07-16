@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CLI tool for managing enhanced training data for EnergiQ-Agent.
+CLI tool for managing enhanced training data for faraday.
 """
 
 import argparse
@@ -11,7 +11,7 @@ from rich.table import Table
 from rich.progress import Progress
 import shutil
 
-from energiq_agent.training.data_collector import EnhancedTrainingDataCollector
+from faraday.training.data_collector import EnhancedTrainingDataCollector
 
 
 console = Console()
@@ -234,24 +234,24 @@ def compress_legacy_data(legacy_file: Path, training_dir: Path):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Manage enhanced training data for EnergiQ-Agent",
+        description="Manage enhanced training data for faraday",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Show dataset statistics
-  python -m energiq_agent.training.cli stats workspace/training_data_enhanced
+  python -m faraday.training.cli stats workspace/training_data_enhanced
   
   # Create train/validation/test splits
-  python -m energiq_agent.training.cli splits workspace/training_data_enhanced
+  python -m faraday.training.cli splits workspace/training_data_enhanced
   
   # Export specific format
-  python -m energiq_agent.training.cli export workspace/training_data_enhanced alpaca_instruction output.jsonl
+  python -m faraday.training.cli export workspace/training_data_enhanced alpaca_instruction output.jsonl
   
   # Validate dataset
-  python -m energiq_agent.training.cli validate workspace/training_data_enhanced
+  python -m faraday.training.cli validate workspace/training_data_enhanced
   
   # Convert legacy data
-  python -m energiq_agent.training.cli convert workspace/training_data.json workspace/training_data_enhanced
+  python -m faraday.training.cli convert workspace/training_data.json workspace/training_data_enhanced
         """,
     )
 

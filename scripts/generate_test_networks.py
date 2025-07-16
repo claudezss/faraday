@@ -9,12 +9,12 @@ import pandapower as pp
 from pathlib import Path
 import sys
 
-from energiq_agent import DATA_DIR
+from faraday import DATA_DIR
 
 # Add the project root to the path so we can import our modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from energiq_agent.tools.network_generator import NetworkGenerator
+from faraday.tools.network_generator import NetworkGenerator
 
 
 def create_base_networks():
@@ -130,7 +130,7 @@ def main():
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("🚀 EnergiQ Agent Test Network Generator")
+    print("🚀 Faraday Test Network Generator")
     print("🎯 Target networks: cigre_mv, case30, case118")
     print(f"📁 Output directory: {args.output_dir}")
 

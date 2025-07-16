@@ -12,15 +12,15 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph
 from langgraph.types import Command
 
-from energiq_agent import WORKSPACE_NETWORKS, WORKSPACE
-from energiq_agent.agents.executor import Executor
-from energiq_agent.agents.planner import Planner
-from energiq_agent.agents.prompts import (
+from faraday import WORKSPACE_NETWORKS, WORKSPACE
+from faraday.agents.executor import Executor
+from faraday.agents.planner import Planner
+from faraday.agents.prompts import (
     SUMMARIZER_PROMPT,
     EXPLAINER_PROMPT,
 )
-from energiq_agent.schemas import State
-from energiq_agent.tools.pandapower import (
+from faraday.schemas import State
+from faraday.tools.pandapower import (
     get_network_status,
     read_network,
     get_advanced_network_status,
@@ -282,7 +282,7 @@ def explainer(state: State):
 
     # --- Enhanced Data Collection for Fine-tuning ---
     try:
-        from energiq_agent.training.data_collector import EnhancedTrainingDataCollector
+        from faraday.training.data_collector import EnhancedTrainingDataCollector
 
         # Initialize enhanced collector
         training_dir = WORKSPACE / "training_data_enhanced"

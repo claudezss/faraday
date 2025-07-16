@@ -1,5 +1,5 @@
 """
-CLI interface for EnergiQ-Agent to fix power grid violations.
+CLI interface for faraday to fix power grid violations.
 """
 
 import argparse
@@ -12,9 +12,9 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from energiq_agent.agents.graph import get_workflow
-from energiq_agent.schemas import State
-from energiq_agent.tools.pandapower import (
+from faraday.agents.graph import get_workflow
+from faraday.schemas import State
+from faraday.tools.pandapower import (
     get_network_status,
     read_network,
     get_voltage_thresholds,
@@ -245,13 +245,13 @@ def run_workflow(
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="Fix power grid violations using EnergiQ-Agent",
+        description="Fix power grid violations using faraday",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  energiq-agent fix network.json
-  energiq-agent fix network.json --verbose
-  energiq-agent fix network.json --max-iterations 10
+  faraday fix network.json
+  faraday fix network.json --verbose
+  faraday fix network.json --max-iterations 10
         """,
     )
 

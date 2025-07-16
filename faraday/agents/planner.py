@@ -1,5 +1,5 @@
-from energiq_agent.agents.prompts import PLANNER_PROMPT
-from energiq_agent.tools.pandapower import (
+from faraday.agents.prompts import PLANNER_PROMPT
+from faraday.tools.pandapower import (
     update_switch_status,
     curtail_load,
     add_battery,
