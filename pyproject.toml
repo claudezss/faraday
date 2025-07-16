@@ -6,7 +6,6 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "google-genai>=1.20.0",
-    "gymnasium>=1.1.1",
     "langchain[anthropic,openai]>=0.3.25",
     "langgraph>=0.4.8",
     "langgraph-cli[inmem]>=0.3.3",
@@ -16,10 +15,13 @@ dependencies = [
     "pandapower>=3.1.1",
     "pandas-stubs==2.2.3.250527",
     "qwen-agent[code-interpreter,gui,mcp,rag]>=0.0.26",
-    "stable-baselines3>=2.6.0",
+    "rich>=13.9.4",
     "streamlit>=1.46.0",
-    "torch>=2.7.1",
 ]
+
+[project.scripts]
+energiq-agent = "energiq_agent.cli:main"
+energiq-agent-train = "energiq_agent.training.cli:main"
 
 [tool.setuptools]
 packages = ["energiq_agent"]
