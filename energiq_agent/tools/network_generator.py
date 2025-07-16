@@ -114,101 +114,141 @@ class NetworkGenerator:
 
         return net
 
-    def add_voltage_violations(
-        self, net: pp.pandapowerNet, violation_count: int = 3, severity: str = "medium"
+    def add_violations(
+        self, net: pp.pandapowerNet, severity: str = "medium"
     ) -> pp.pandapowerNet:
-        """Add voltage violations by modifying loads and generation."""
+        """Add thermal violations by gradually increasing max 3 loads until severity is met.
 
-        severity_multipliers = {
-            "light": (
-                0.96,
-                1.04,
-                1.15,
-            ),  # (min_v, max_v, load_multiplier) - more conservative
-            "medium": (0.92, 1.07, 1.3),
-            "severe": (0.88, 1.10, 1.6),
+        Args:
+            net: Pandapower network to modify
+            severity: Violation severity level ("light", "medium", "severe")
+
+        Returns:
+            Modified network with thermal violations validated by powerflow
+        """
+
+        # Define thermal violation thresholds for different severities
+        severity_thresholds = {
+            "light": 110,  # 110% line loading
+            "medium": 130,  # 130% line loading
+            "severe": 150,  # 150% line loading
         }
 
-        min_v, max_v, load_mult = severity_multipliers.get(
-            severity, severity_multipliers["medium"]
+        target_loading = severity_thresholds.get(
+            severity, severity_thresholds["medium"]
         )
 
-        # Get buses that can have violations (excluding slack bus)
-        candidate_buses = net.bus[net.bus.type != "slack"].index.tolist()
+        # Get all loads and select up to 3 randomly
+        available_loads = net.load.index.tolist()
+        if len(available_loads) == 0:
+            print("Warning: No loads found in network")
+            return net
 
-        if len(candidate_buses) < violation_count:
-            violation_count = len(candidate_buses)
+        # Limit to maximum 3 loads
+        num_loads_to_modify = min(3, len(available_loads))
+        selected_loads = random.sample(available_loads, num_loads_to_modify)
 
-        violation_buses = random.sample(candidate_buses, violation_count)
-
-        for i, bus_idx in enumerate(violation_buses):
-            # Only create undervoltage violations (more solvable)
-            # Increase load to cause voltage drop
-            loads_at_bus = net.load[net.load.bus == bus_idx]
-            if len(loads_at_bus) > 0:
-                for load_idx in loads_at_bus.index:
-                    # Conservative load increase
-                    net.load.loc[load_idx, "p_mw"] *= load_mult
-                    net.load.loc[load_idx, "q_mvar"] *= load_mult
-                    # Mark as curtailable for AI to fix
-                    net.load.loc[load_idx, "curtailable"] = True
-            else:
-                # Create new moderate load
-                pp.create_load(
-                    net,
-                    bus=bus_idx,
-                    p_mw=1.0 * load_mult,  # More conservative
-                    q_mvar=0.3 * load_mult,
-                    name=f"High_Load_Bus_{bus_idx}",
-                    curtailable=True,
-                )
-
-        return net
-
-    def add_thermal_violations(
-        self, net: pp.pandapowerNet, violation_count: int = 2, severity: str = "medium"
-    ) -> pp.pandapowerNet:
-        """Add thermal violations by overloading lines."""
-
-        severity_multipliers = {
-            "light": 1.1,  # 110% loading
-            "medium": 1.3,  # 130% loading
-            "severe": 1.6,  # 160% loading
-        }
-
-        loading_mult = severity_multipliers.get(
-            severity, severity_multipliers["medium"]
+        print(
+            f"Creating thermal violations with {severity} severity (target: {target_loading}% loading)"
         )
+        print(f"Modifying {num_loads_to_modify} loads gradually")
 
-        # Select random lines to overload
-        candidate_lines = net.line.index.tolist()
+        # Store original values for rollback if needed
+        original_p_mw = {}
 
-        if len(candidate_lines) < violation_count:
-            violation_count = len(candidate_lines)
+        for load_idx in selected_loads:
+            original_p_mw[load_idx] = net.load.loc[load_idx, "p_mw"]
+            # Mark as curtailable for AI to fix
+            net.load.loc[load_idx, "curtailable"] = True
 
-        violation_lines = random.sample(candidate_lines, violation_count)
+        # Gradually increase loads until thermal violations meet severity
+        increment = 0.5  # 10% increment per iteration
+        max_iterations = 50  # Safety limit
+        iteration = 0
+        violations_achieved = False
 
-        for line_idx in violation_lines:
-            line = net.line.loc[line_idx]
-            to_bus = line.to_bus
+        while not violations_achieved and iteration < max_iterations:
+            iteration += 1
 
-            # Increase load at the end of the line
-            loads_at_bus = net.load[net.load.bus == to_bus]
-            if len(loads_at_bus) > 0:
-                for load_idx in loads_at_bus.index:
-                    net.load.loc[load_idx, "p_mw"] *= loading_mult
-                    net.load.loc[load_idx, "q_mvar"] *= loading_mult
-                    net.load.loc[load_idx, "curtailable"] = True
-            else:
-                # Create new load to overload the line
-                pp.create_load(
-                    net,
-                    bus=to_bus,
-                    p_mw=1.5 * loading_mult,
-                    q_mvar=0.4 * loading_mult,
-                    name=f"Overload_Bus_{to_bus}",
-                    curtailable=True,
+            # Increase selected loads by increment
+            for load_idx in selected_loads:
+                net.load.loc[load_idx, "p_mw"] = original_p_mw[load_idx] * (
+                    1 + increment * iteration
                 )
+
+            # Run powerflow to check thermal violations
+            try:
+                pp.runpp(net)
+
+                # Check thermal violations
+                thermal_violations = []
+                max_loading = 0
+
+                for line_idx, loading in zip(
+                    net.line.index.tolist() + net.trafo.index.tolist(),
+                    net.res_line.loading_percent.tolist()
+                    + net.res_trafo.loading_percent.tolist(),
+                ):
+                    if loading > 100:  # Any overloading
+                        thermal_violations.append(
+                            {"line": line_idx, "loading_percent": loading}
+                        )
+                        max_loading = max(max_loading, loading)
+
+                # Check if we've achieved target severity
+                if len(thermal_violations) > 0 and max_loading >= target_loading:
+                    violations_achieved = True
+                    print(
+                        f"✓ Successfully created {len(thermal_violations)} thermal violations after {iteration} iterations:"
+                    )
+
+                    for viol in thermal_violations:
+                        line_name = (
+                            net.line.loc[viol["line"], "name"]
+                            if "name" in net.line.columns
+                            else f"Line_{viol['line']}"
+                        )
+                        print(
+                            f"  - {line_name}: {viol['loading_percent']:.1f}% loading"
+                        )
+
+                    # Show final load modifications
+                    for load_idx in selected_loads:
+                        load_name = (
+                            net.load.loc[load_idx, "name"]
+                            if "name" in net.load.columns
+                            else f"Load_{load_idx}"
+                        )
+                        final_multiplier = 1 + increment * iteration
+                        print(
+                            f"  - Modified {load_name}: P={original_p_mw[load_idx]:.2f} -> {net.load.loc[load_idx, 'p_mw']:.2f} MW (x{final_multiplier:.2f})"
+                        )
+
+                    print(f"  - Maximum line loading: {max_loading:.1f}%")
+
+                elif iteration % 10 == 0:  # Progress update every 10 iterations
+                    current_max = max_loading if thermal_violations else 0
+                    print(
+                        f"  Iteration {iteration}: Max loading = {current_max:.1f}%, target = {target_loading}%"
+                    )
+
+            except Exception as e:
+                print(f"Error during powerflow at iteration {iteration}: {e}")
+                # Rollback to previous state
+                for load_idx in selected_loads:
+                    net.load.loc[load_idx, "p_mw"] = original_p_mw[load_idx] * (
+                        1 + increment * (iteration - 1)
+                    )
+                break
+
+        if not violations_achieved:
+            print(
+                f"Warning: Could not achieve {severity} thermal violations after {max_iterations} iterations"
+            )
+            print(
+                "Network may be too robust or loads insufficient to create thermal violations"
+            )
+            # Keep the final state even if target not achieved
 
         return net
 
@@ -251,32 +291,11 @@ class NetworkGenerator:
 
         return net
 
-    def add_battery_opportunities(self, net: pp.pandapowerNet) -> pp.pandapowerNet:
-        """Mark suitable buses for battery placement."""
-
-        # Add metadata to buses to indicate battery suitability
-        net.bus["battery_suitable"] = False
-
-        # Buses at the end of feeders are good for batteries
-        for bus_idx in net.bus.index:
-            connected_lines = len(
-                net.line[(net.line.from_bus == bus_idx) | (net.line.to_bus == bus_idx)]
-            )
-
-            # End buses (only one connection) or important junction buses
-            if connected_lines == 1 or connected_lines >= 3:
-                net.bus.loc[bus_idx, "battery_suitable"] = True
-
-        return net
-
     def generate_test_network(
         self,
         base_net: pp.pandapowerNet,
-        voltage_violations: int = 2,
-        thermal_violations: int = 1,
         severity: str = "medium",
-        add_switches: bool = True,
-        add_battery_sites: bool = True,
+        add_switches: bool = False,
     ) -> pp.pandapowerNet:
         """Generate a complete test network with violations and solution capabilities."""
 
@@ -287,18 +306,11 @@ class NetworkGenerator:
         net = self.fill_missing_names(net)
 
         # Add violations
-        if voltage_violations > 0:
-            net = self.add_voltage_violations(net, voltage_violations, severity)
-
-        if thermal_violations > 0:
-            net = self.add_thermal_violations(net, thermal_violations, severity)
+        net = self.add_violations(net, severity)
 
         # Add solution capabilities
         if add_switches:
             net = self.add_switches_for_topology_control(net)
-
-        if add_battery_sites:
-            net = self.add_battery_opportunities(net)
 
         return net
 
@@ -321,7 +333,13 @@ class NetworkGenerator:
                     )
 
             # Check thermal violations
-            for line_idx, loading in zip(net.line.index, net.res_line.loading_percent):
+            for line_idx, loading in zip(
+                net.line.index,
+                net.res_line.loading_percent.tolist()
+                + net.res_trafo.loading_percent.tolist()
+                if len(net.trafo) > 0
+                else [],
+            ):
                 if loading > 100:
                     thermal_violations.append(
                         {"line": line_idx, "loading_percent": loading}

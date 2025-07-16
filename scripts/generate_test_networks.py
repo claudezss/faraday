@@ -5,9 +5,11 @@ Creates test scenarios for cigre_mv, case30, and case118 networks.
 """
 
 import argparse
-import pandapower.networks as pn
+import pandapower as pp
 from pathlib import Path
 import sys
+
+from energiq_agent import DATA_DIR
 
 # Add the project root to the path so we can import our modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -19,9 +21,12 @@ def create_base_networks():
     """Create the three target base networks."""
 
     base_networks = {
-        "cigre_mv": pn.create_cigre_network_mv(),
-        "case30": pn.case30(),
-        "case118": pn.case118(),
+        "cigre_mv": pp.from_json(DATA_DIR / "base_networks" / "cigre_mv.json"),
+        "cigre_mv_modified": pp.from_json(
+            DATA_DIR / "base_networks" / "cigre_mv_modified.json"
+        ),
+        "case30": pp.from_json(DATA_DIR / "base_networks" / "case30_no_viol.json"),
+        "case118": pp.from_json(DATA_DIR / "base_networks" / "case118_no_viol.json"),
     }
 
     return base_networks
@@ -36,55 +41,36 @@ def generate_test_scenarios(output_dir: Path):
     scenarios = [
         # CIGRE MV scenarios
         {
-            "name": "cigre_mv_light_voltage",
+            "name": "cigre_mv_light",
             "base": "cigre_mv",
-            "voltage_violations": 2,
-            "thermal_violations": 0,
             "severity": "light",
         },
         {
-            "name": "cigre_mv_mixed_medium",
-            "base": "cigre_mv",
-            "voltage_violations": 3,
-            "thermal_violations": 2,
+            "name": "cigre_mv_medium",
+            "base": "cigre_mv_modified",
             "severity": "medium",
         },
         {
-            "name": "cigre_mv_thermal_severe",
+            "name": "cigre_mv_severe",
             "base": "cigre_mv",
-            "voltage_violations": 1,
-            "thermal_violations": 3,
             "severity": "severe",
         },
         # Case30 scenarios
         {
-            "name": "case30_voltage_medium",
+            "name": "case30_medium",
             "base": "case30",
-            "voltage_violations": 4,
-            "thermal_violations": 1,
             "severity": "medium",
         },
         {
-            "name": "case30_mixed_light",
+            "name": "case30_light",
             "base": "case30",
-            "voltage_violations": 2,
-            "thermal_violations": 2,
             "severity": "light",
         },
         # Case118 scenarios
         {
-            "name": "case118_large_mixed",
+            "name": "case118_light",
             "base": "case118",
-            "voltage_violations": 6,
-            "thermal_violations": 4,
-            "severity": "medium",
-        },
-        {
-            "name": "case118_voltage_severe",
-            "base": "case118",
-            "voltage_violations": 8,
-            "thermal_violations": 2,
-            "severity": "severe",
+            "severity": "light",
         },
     ]
 
@@ -98,8 +84,6 @@ def generate_test_scenarios(output_dir: Path):
 
             test_net = generator.generate_test_network(
                 base_net=base_net,
-                voltage_violations=scenario["voltage_violations"],
-                thermal_violations=scenario["thermal_violations"],
                 severity=scenario["severity"],
             )
 

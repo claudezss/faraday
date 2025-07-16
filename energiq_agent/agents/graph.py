@@ -73,16 +73,13 @@ def planner(state: State):
         context_mode = "hierarchical"
         max_tokens = 3000
     else:
-        # Small networks: Use violations_only for efficiency
-        context_mode = "violations_only"
+        # Small networks
+        context_mode = "full"
         max_tokens = None
 
     # Get optimized network status using advanced features
-    if context_mode == "violations_only":
-        status = get_network_status(state["network"], violations_only=True)
-        # If no violations, get full status
-        if not status.get("bus_status", []) and not status.get("line_status", []):
-            status = get_network_status(state["network"])
+    if context_mode == "full":
+        status = get_network_status(state["network"], hierarchical=True)
     elif context_mode == "hierarchical":
         status = get_network_status(state["network"], hierarchical=True)
     elif total_buses <= 100:
