@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
 
-from energiq_agent.tools.pandapower import (
+from faraday.tools.pandapower import (
     curtail_load,
     add_battery,
     update_switch_status,

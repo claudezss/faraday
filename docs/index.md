@@ -1,3 +1,3 @@
 # Home
 
-## Welcome to EnergiQ Agent
+## Welcome to Faraday

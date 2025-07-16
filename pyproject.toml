@@ -1,5 +1,5 @@
 [project]
-name = "energiq-agent"
+name = "faraday"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -20,11 +20,11 @@ dependencies = [
 ]
 
 [project.scripts]
-energiq-agent = "energiq_agent.cli:main"
-energiq-agent-train = "energiq_agent.training.cli:main"
+faraday = "faraday.cli:main"
+faraday-train = "faraday.training.cli:main"
 
 [tool.setuptools]
-packages = ["energiq_agent"]
+packages = ["faraday"]
 
 [dependency-groups]
 dev = [

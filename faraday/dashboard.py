@@ -5,8 +5,8 @@ import pandapower as pp
 import streamlit as st
 from dataclasses import dataclass, field
 
-from energiq_agent import WORKSPACE_NETWORKS
-from energiq_agent.agents.graph import (
+from faraday import WORKSPACE_NETWORKS
+from faraday.agents.graph import (
     planner as run_planner,
     executor as run_executor,
     summarizer as run_summarizer,
@@ -14,8 +14,8 @@ from energiq_agent.agents.graph import (
     cache_network,
     get_workflow,
 )
-from energiq_agent.schemas import State
-from energiq_agent.tools.pandapower import (
+from faraday.schemas import State
+from faraday.tools.pandapower import (
     get_voltage_thresholds,
     set_voltage_thresholds,
 )

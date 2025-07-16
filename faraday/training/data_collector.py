@@ -10,8 +10,8 @@ from typing import Dict, List
 import uuid
 
 import pandapower as pp
-from energiq_agent.tools.pandapower import get_network_status
-from energiq_agent.schemas import State
+from faraday.tools.pandapower import get_network_status
+from faraday.schemas import State
 
 
 class NetworkCompressor:
