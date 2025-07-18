@@ -8,7 +8,7 @@ from uuid import uuid4
 from langgraph.types import Command
 
 from faraday import WORKSPACE_NETWORKS
-from faraday.schemas import State
+from faraday.agents.workflow.state import State
 from faraday.tools.pandapower import read_network
 
 

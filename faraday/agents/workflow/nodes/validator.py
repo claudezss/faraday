@@ -4,7 +4,7 @@ Validation node for validating network changes and determining rollback requirem
 
 from langgraph.types import Command
 
-from faraday.schemas import State
+from faraday.agents.workflow.state import State
 
 
 def validator(state: State):

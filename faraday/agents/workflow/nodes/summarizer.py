@@ -5,7 +5,7 @@ Summarizer node for generating summaries of executed actions.
 from langgraph.types import Command
 
 from faraday.agents.prompts import SUMMARIZER_PROMPT
-from faraday.schemas import State
+from faraday.agents.workflow.state import State
 from ..config import llm
 
 

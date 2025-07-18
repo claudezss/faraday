@@ -2,7 +2,7 @@
 Control flow logic for the workflow.
 """
 
-from faraday.schemas import State
+from faraday.agents.workflow.state import State
 
 
 def should_continue(state: State):

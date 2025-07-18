@@ -8,7 +8,7 @@ from pathlib import Path
 from langgraph.types import Command
 
 from faraday.agents.planner import Planner
-from faraday.schemas import State
+from faraday.agents.workflow.state import State
 from faraday.tools.pandapower import (
     get_network_status,
     get_advanced_network_status,

@@ -9,7 +9,7 @@ import pandapower as pp
 from langgraph.types import Command
 
 from faraday.agents.executor import Executor
-from faraday.schemas import State
+from faraday.agents.workflow.state import State
 from faraday.tools.pandapower import read_network, get_network_status
 
 

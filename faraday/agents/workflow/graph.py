@@ -5,9 +5,9 @@ Main workflow graph definition for the Faraday agent system.
 from langchain_core.runnables import RunnableLambda
 from langgraph.graph import StateGraph
 
-from faraday.schemas import State
-from .control import should_continue
-from .nodes import (
+from faraday.agents.workflow.state import State
+from faraday.agents.workflow.control import should_continue
+from faraday.agents.workflow.nodes import (
     cache_network,
     planner,
     executor,

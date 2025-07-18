@@ -9,7 +9,7 @@ from langgraph.types import Command
 from faraday import WORKSPACE
 from faraday.agents.planner import Planner
 from faraday.agents.prompts import EXPLAINER_PROMPT
-from faraday.schemas import State
+from faraday.agents.workflow.state import State
 from faraday.tools.pandapower import read_network, get_network_status
 from ..config import llm
 

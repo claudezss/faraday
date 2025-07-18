@@ -14,7 +14,7 @@ from faraday.agents.graph import (
     cache_network,
     get_workflow,
 )
-from faraday.schemas import State
+from faraday.agents.workflow.state import State
 from faraday.tools.pandapower import (
     get_voltage_thresholds,
     set_voltage_thresholds,
