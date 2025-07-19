@@ -4,31 +4,32 @@ Explainer node for generating explanations and collecting training data.
 
 import json
 
-from langgraph.types import Command
-
 from faraday import WORKSPACE
-from faraday.agents.planner import Planner
-from faraday.agents.prompts import EXPLAINER_PROMPT
+from faraday.agents.prompts import EXPLAINER_PROMPT, PLANNER_PROMPT
 from faraday.agents.workflow.state import State
 from faraday.tools.pandapower import read_network, get_network_status
 from ..config import llm
 
 
-def explainer(state: State):
+def explainer(state: State) -> State:
     """Generates an explanation of the actions and saves the conversation data."""
-    executed_actions = state.get("executed_actions", [])
+    executed_actions = state.all_executed_actions
     if not executed_actions:
         explanation = "No actions were executed, so no explanation is needed."
     else:
         action_report = "\n".join(
             [f"- {action['name']}({action['args']})" for action in executed_actions]
         )
+
         explanation_prompt = EXPLAINER_PROMPT.format(
-            violation_before_action=state["violation_before_action"],
+            violation_before_action=state.iteration_results[
+                0
+            ].viola_before.model_dump(),
             action_report=action_report,
-            violation_after_action=state["violation_after_action"],
+            violation_after_action=state.iteration_results[-1].viola_after.model_dump(),
         )
         explanation = llm.invoke(explanation_prompt).content
+        state.explanation = explanation
 
     # --- Enhanced Data Collection for Fine-tuning ---
     try:
@@ -43,7 +44,7 @@ def explainer(state: State):
             state=state,
             executed_actions=executed_actions,
             explanation=explanation,
-            system_prompt=Planner.prompt(),
+            system_prompt=PLANNER_PROMPT,
         )
 
         # Save in multiple formats
@@ -54,17 +55,17 @@ def explainer(state: State):
         print(f"Enhanced training data collection failed: {e}")
         _fallback_training_data_collection(state, executed_actions, explanation)
 
-    return Command(update={"explanation": explanation})
+    return state
 
 
 def _fallback_training_data_collection(state, executed_actions, explanation):
     """Fallback method for training data collection."""
     training_data_path = WORKSPACE / "training_data.json"
 
-    net = read_network(state["network_file_path"])
+    net = read_network(state.org_network_copy_file_path)
     status = get_network_status(net)
     conversation_data = {
-        "system_prompt": Planner.prompt(),
+        "system_prompt": PLANNER_PROMPT,
         "user_prompt": f"""Network Status: \n{status}\n""",
         "assistant_response": {
             "actions": executed_actions,

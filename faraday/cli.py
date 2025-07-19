@@ -12,8 +12,8 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from faraday.agents.graph import get_workflow
-from faraday.schemas import State
+from faraday.agents.workflow.graph import get_workflow
+from faraday.agents.workflow.state import State
 from faraday.tools.pandapower import (
     get_network_status,
     read_network,

@@ -1,41 +1,112 @@
-from typing import TypedDict, List, Dict, Any, Optional, Annotated
+from typing import List, Dict, Any, Optional, Annotated
 from langgraph.graph.message import add_messages
-import pandapower as pp
+from pydantic import BaseModel, Field
 
 
-class State(TypedDict):
-    # File paths
-    network_file_path: str
-    editing_network_file_path: Optional[str]
-    work_dir: Optional[str]
+class VoltageViolation(BaseModel):
+    bus_idx: int
+    v_mag_pu: float
 
-    # Immutable network state
-    original_network: Optional[pp.pandapowerNet]
-    original_network_file_path: Optional[str]
 
-    # Working network state
-    current_network: Optional[pp.pandapowerNet]
-    network: Optional[pp.pandapowerNet]  # Keep for backward compatibility
+class ThermalViolation(BaseModel):
+    name: str
+    from_bus_idx: int
+    to_bus_idx: int
+    loading_percent: float
+
+
+class Violation(BaseModel):
+    voltage: List[VoltageViolation]
+    thermal: List[ThermalViolation]
+    disconnected_buses: List[int]
+
+
+class IterationResult(BaseModel):
+    iter: int
+    executed_actions: List[Dict[str, Any]]
+    viola_before: Violation
+    viola_after: Violation
+
+
+class Load(BaseModel):
+    name: str
+    bus_idx: int
+    p_mw: float
+    q_mvar: float
+    curtailable: bool = Field(False)
+
+
+class Generator(BaseModel):
+    name: str
+    bus_idx: int
+    p_mw: float
+    q_mvar: float
+    controllable: bool = Field(False)
+
+
+class Bus(BaseModel):
+    idx: int
+    name: str
+    v_mag_pu: float
+
+
+class Switch(BaseModel):
+    from_bus_idx: int
+    to_bus_idx: int
+    name: str
+    closed: bool
+    controllable: bool = Field(True)
+
+
+class Line(BaseModel):
+    name: str
+    from_bus_idx: int
+    to_bus_idx: int
+    loading_percent: float
+
+
+class NetworkState(BaseModel):
+    buses: List[Bus]
+    switches: List[Switch]
+    loads: List[Load]
+    generators: List[Generator]
+    lines: List[Line]
+
+
+class ActionEffectiveness(BaseModel):
+    action_name: str
+    action_params: Dict[str, Any]
+    network_id: str
+    network_state: NetworkState
+    viola_before: Violation
+    viola_after: Violation
+
+
+class State(BaseModel):
+    # Core file paths
+    network_file_path: Optional[str] = Field("./")  # Original network file
+    org_network_copy_file_path: Optional[str] = Field("./")
+    editing_network_file_path: Optional[str] = Field(
+        "./"
+    )  # Current working network file
+    work_dir: Optional[str] = Field("./")  # Working directory for temporary files
 
     # Iteration tracking
-    iteration_results: Optional[List[Dict[str, Any]]]
-    successful_changes: Optional[List[Dict[str, Any]]]
+    iteration_results: Optional[List[IterationResult]] = Field(default_factory=list)
 
-    # Violation tracking
-    violation_before_action: Optional[dict]
-    violation_after_action: Optional[dict]
+    messages: Annotated[list, add_messages] = Field(default_factory=list)
 
-    # Agent state
-    messages: Annotated[list, add_messages]
-    action_plan: Optional[List[Dict[str, Any]]]
-    executed_actions: Optional[List[Dict[str, Any]]]
-    summary: Optional[str]
-    explanation: Optional[str]
+    summary: Optional[str] = Field("")
 
-    # Control flow
-    iter: int
+    explanation: Optional[str] = Field("")
 
-    # Validation state
-    validation_result: Optional[str]
-    violations_improvement: Optional[int]
-    rollback_required: Optional[bool]
+    @property
+    def all_executed_actions(self) -> List[Dict[str, Any]]:
+        acts = []
+        for _iter in self.iteration_results:
+            acts.extend(_iter.executed_actions)
+        return acts
+
+    @property
+    def iter_num(self) -> int:
+        return len(self.iteration_results) if self.iteration_results else 0

@@ -5,19 +5,14 @@ Control flow logic for the workflow.
 from faraday.agents.workflow.state import State
 
 
-def should_continue(state: State):
+def should_continue(state: State, max_iterations: int = 10) -> str:
     """Determines the next step in the workflow."""
-    if state["iter"] >= 5:
+    if state.iter_num >= max_iterations:
         return "summarizer"  # Go to summarizer if max iterations are reached
 
-    # Check validation result
-    validation_result = state.get("validation_result")
-    if validation_result == "failed_execution":
-        return "summarizer"  # Stop if execution failed
+    viola = state.iteration_results[-1].viola_after
 
-    if (
-        len(state["violation_after_action"]["voltage"]) > 0
-        or len(state["violation_after_action"]["thermal"]) > 0
-    ):
+    if len(viola.voltage) > 0 or len(viola.thermal) > 0:
         return "planner"
+
     return "summarizer"  # Go to summarizer if violations are resolved

@@ -7,14 +7,10 @@ from langgraph.graph import StateGraph
 
 from faraday.agents.workflow.state import State
 from faraday.agents.workflow.control import should_continue
-from faraday.agents.workflow.nodes import (
-    cache_network,
-    planner,
-    executor,
-    validator,
-    summarizer,
-    explainer,
-)
+from faraday.agents.workflow.nodes.cache import cache_network
+from faraday.agents.workflow.nodes.planner import planner
+from faraday.agents.workflow.nodes.summarizer import summarizer
+from faraday.agents.workflow.nodes.explainer import explainer
 
 
 def get_workflow():
@@ -24,18 +20,14 @@ def get_workflow():
     # Add nodes
     workflow.add_node("cache_network", cache_network)
     workflow.add_node("planner", RunnableLambda(planner))
-    workflow.add_node("executor", executor)
-    workflow.add_node("validator", RunnableLambda(validator))
     workflow.add_node("summarizer", RunnableLambda(summarizer))
     workflow.add_node("explainer", RunnableLambda(explainer))
 
     # Define workflow edges
     workflow.set_entry_point("cache_network")
     workflow.add_edge("cache_network", "planner")
-    workflow.add_edge("planner", "executor")
-    workflow.add_edge("executor", "validator")
     workflow.add_conditional_edges(
-        "validator",
+        "planner",
         should_continue,
         {"planner": "planner", "summarizer": "summarizer"},
     )
