@@ -207,6 +207,150 @@ def get_network_status(
     return status
 
 
+def get_json_network_status(net):
+    pp.runpp(net)
+
+    data = {
+        "buses": [],
+        "lines": [],
+        "transformers": [],
+        "switches": [],
+        "generators": [],
+        "loads": [],
+        "violations": {"voltage_violations": [], "thermal_violations": []},
+    }
+
+    thresholds = get_voltage_thresholds()
+
+    # Buses with voltages
+    for idx, row in net.bus.iterrows():
+        vm_pu = net.res_bus.loc[idx, "vm_pu"]
+        bus_data = {
+            "id": idx,
+            "name": row["name"],
+            "vn_kv": row.vn_kv,
+            "voltage_pu": round(vm_pu, 4),
+            "voltage_violation": str(
+                vm_pu < thresholds.v_min or vm_pu > thresholds.v_max
+            ),
+        }
+        data["buses"].append(bus_data)
+
+    # Lines with loading %
+    for idx, row in net.line.iterrows():
+        loading = net.res_line.loc[idx, "loading_percent"]
+        line_data = {
+            "id": idx,
+            "name": row["name"],
+            "from_bus": row.from_bus,
+            "to_bus": row.to_bus,
+            "loading_percent": round(loading, 2),
+            "status": "closed" if row.in_service else "open",
+            "thermal_violation": str(loading > 100),
+        }
+        data["lines"].append(line_data)
+
+    # Transformers
+    for idx, row in net.trafo.iterrows():
+        loading = net.res_trafo.loc[idx, "loading_percent"]
+        trafo_data = {
+            "id": idx,
+            "name": row["name"],
+            "hv_bus": row.hv_bus,
+            "lv_bus": row.lv_bus,
+            "tap_pos": row.tap_pos,
+            "status": "closed" if row.in_service else "open",
+            "loading_percent": round(loading, 2),
+            "thermal_violation": str(loading > 100.0),
+        }
+
+        data["transformers"].append(trafo_data)
+
+    # Switches
+    for idx, row in net.switch.iterrows():
+        switch = {
+            "id": idx,
+            "name": row["name"],
+            "bus": row.bus,
+            "element": row.element,
+            "status": "closed" if row.closed else "open",
+        }
+        data["switches"].append(switch)
+
+    # Loads
+    for idx, row in net.load.iterrows():
+        load = {
+            "id": idx,
+            "name": row["name"],
+            "bus": row.bus,
+            "p_mw": row.p_mw,
+            "q_mvar": row.q_mvar,
+            "status": "connected" if row.in_service else "disconnected",
+        }
+        data["loads"].append(load)
+
+    # Generators
+    for idx, row in net.sgen.iterrows():
+        gen = {
+            "id": idx,
+            "name": row["name"],
+            "bus": row.bus,
+            "p_mw": row.p_mw,
+            "q_mvar": row.q_mvar,
+            "type": row.get("type", "sgen"),
+            "status": "connected" if row.in_service else "disconnected",
+        }
+        data["generators"].append(gen)
+
+    voltage_violations = []
+    thermal_violations = []
+
+    for idx, (i, row) in enumerate(net.bus.iterrows()):
+        v_mag = net.res_bus.vm_pu.iloc[idx]
+        if v_mag > thresholds.v_max or v_mag < thresholds.v_min:
+            voltage_violations.append(
+                {
+                    "bus": i,
+                    "name": row["name"],
+                    "v_mag_pu": round(float(v_mag), 3),
+                    "severity": "high"
+                    if v_mag > thresholds.high_violation_upper
+                    or v_mag < thresholds.high_violation_lower
+                    else "medium",
+                }
+            )
+
+    for idx, (i, row) in enumerate(net.line.iterrows()):
+        loading = net.res_line.loading_percent.iloc[idx]
+        if loading > 100:
+            thermal_violations.append(
+                {
+                    "name": row["name"],
+                    "loading_percent": round(float(loading), 3),
+                    "from_bus": int(row["from_bus"]),
+                    "to_bus": int(row["to_bus"]),
+                    "severity": "high" if loading > 120 else "medium",
+                }
+            )
+
+    for idx, (i, row) in enumerate(net.trafo.iterrows()):
+        loading = net.res_trafo.loading_percent.iloc[idx]
+        if loading > 100:
+            thermal_violations.append(
+                {
+                    "name": row["name"],
+                    "loading_percent": round(float(loading), 3),
+                    "from_bus": int(row["hv_bus"]),
+                    "to_bus": int(row["lv_bus"]),
+                    "severity": "high" if loading > 120 else "medium",
+                }
+            )
+    data["violations"] = {}
+    data["violations"]["voltage"] = voltage_violations
+    data["violations"]["thermal"] = thermal_violations
+    return data
+
+
 def get_electrical_zones(
     net: pp.pandapowerNet, zone_size: int = 50
 ) -> dict[int, list[int]]:
