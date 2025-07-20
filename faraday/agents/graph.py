@@ -23,8 +23,6 @@ from faraday.schemas import State
 from faraday.tools.pandapower import (
     get_network_status,
     read_network,
-    get_advanced_network_status,
-    get_optimized_network_status,
 )
 
 # Initialize the language model
@@ -56,42 +54,7 @@ def planner(state: State):
     work_dir = Path(state["work_dir"])
     state["network"] = read_network(state["editing_network_file_path"])
 
-    # Phase 3: Intelligent context-aware planning mode selection
-    total_buses = len(state["network"].bus)
-
-    # Determine optimal context mode based on network characteristics
-    if total_buses > 2000:
-        # Very large networks: Use ultra-compact overview
-        context_mode = "adaptive"
-        max_tokens = 500
-    elif total_buses > 500:
-        # Large networks: Use graph-based representation for better action understanding
-        context_mode = "graph"
-        max_tokens = 1500
-    elif total_buses > 100:
-        # Medium networks: Use hierarchical representation
-        context_mode = "hierarchical"
-        max_tokens = 3000
-    else:
-        # Small networks
-        context_mode = "full"
-        max_tokens = None
-
-    # Get optimized network status using advanced features
-    if context_mode == "full":
-        status = get_network_status(state["network"], hierarchical=True)
-    elif context_mode == "hierarchical":
-        status = get_network_status(state["network"], hierarchical=True)
-    elif total_buses <= 100:
-        # For small networks, use optimization-focused representation
-        status = get_optimized_network_status(
-            state["network"], context_mode="optimization"
-        )
-    else:
-        # Use advanced Phase 3 representation for large networks
-        status = get_advanced_network_status(
-            state["network"], max_tokens=max_tokens, context_mode=context_mode
-        )
+    status = get_network_status(state["network"], hierarchical=True)
 
     with open(work_dir / "status_before_action.json", "w") as f:
         json.dump(status, f)
