@@ -6,14 +6,8 @@ import streamlit as st
 from dataclasses import dataclass, field
 
 from faraday import WORKSPACE_NETWORKS
-from faraday.agents.graph import (
-    planner as run_planner,
-    executor as run_executor,
-    summarizer as run_summarizer,
-    explainer as run_explainer,
-    cache_network,
-    get_workflow,
-)
+from faraday.agents.workflow.graph import get_workflow
+from faraday.agents.workflow.nodes.cache import cache_network
 from faraday.agents.workflow.state import State
 from faraday.tools.pandapower import (
     get_voltage_thresholds,
@@ -37,7 +31,7 @@ class Step(str, Enum):
 class ChatSessionState:
     step: Step = Step.START
     messages: list = field(default_factory=list)
-    state: State = field(default_factory=dict)
+    state: State = None
     net: pp.pandapowerNet = None
     initial_line_violations: pd.DataFrame = field(default_factory=pd.DataFrame)
     initial_voltage_violations: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -127,21 +121,23 @@ def run_automated_workflow():
         with st.spinner("Running automated violation fix workflow..."):
             progress_container.info("🔧 Starting automated workflow...")
 
-            result = graph.invoke(chat_state.state)
+            result = State(**graph.invoke(chat_state.state))
 
             # Store results
             chat_state.auto_result = result
-            chat_state.state.update(result)
+            chat_state.state = result
 
             progress_container.success("✅ Automated workflow completed!")
 
             # Display results immediately
-            executed_actions = result.get("executed_actions", [])
-            final_violations = result.get(
-                "violation_after_action", {"voltage": [], "thermal": []}
+            executed_actions = result.all_executed_actions
+            final_violations = (
+                result.iteration_results[-1].viola_after
+                if result.iteration_results
+                else None
             )
-            summary = result.get("summary", "")
-            explanation = result.get("explanation", "")
+            summary = result.summary or ""
+            explanation = result.explanation or ""
 
             # Show executed actions
             if executed_actions:
@@ -178,8 +174,10 @@ def run_automated_workflow():
                 add_message("assistant", f"💡 **Explanation**: {explanation}")
 
             # Final status message
-            total_violations = len(final_violations.get("voltage", [])) + len(
-                final_violations.get("thermal", [])
+            total_violations = (
+                len(final_violations.voltage) + len(final_violations.thermal)
+                if final_violations
+                else 0
             )
             if total_violations == 0:
                 status_container.success("🎉 All violations successfully resolved!")
@@ -207,19 +205,23 @@ def get_assistant_response(user_input: str):
     # --- Main Logic ---
     if chat_state.step == Step.START:
         with st.spinner("Analyzing network and generating a plan..."):
-            cache_command = cache_network(chat_state.state)
-            chat_state.state.update(cache_command.update)
-            planner_command = run_planner(chat_state.state)
-            chat_state.state.update(planner_command.update)
-            action_plan = chat_state.state.get("action_plan")
+            # Cache the network first
+            chat_state.state = cache_network(chat_state.state)
 
-            if not action_plan:
-                add_message(
-                    "assistant",
-                    "No violations found or no action plan could be generated.",
-                )
-                chat_state.step = Step.START
-            else:
+            # Get workflow and run one iteration
+            workflow = get_workflow()
+            graph = workflow.compile()
+
+            # Run the workflow for one iteration (planner step)
+            result = graph.invoke(chat_state.state)
+            chat_state.state = result
+
+            # Get the latest action plan from iteration results
+            if (
+                chat_state.state.iteration_results
+                and chat_state.state.iteration_results[-1].executed_actions
+            ):
+                action_plan = chat_state.state.iteration_results[-1].executed_actions
                 plan_df = format_plan_as_table(action_plan)
                 json_plan_str = json.dumps(action_plan, indent=2)
                 message = (
@@ -230,50 +232,36 @@ def get_assistant_response(user_input: str):
                 )
                 add_message("assistant", message, plan_df=plan_df)
                 chat_state.step = Step.PLAN_GENERATED
+            else:
+                add_message(
+                    "assistant",
+                    "No violations found or no action plan could be generated.",
+                )
+                chat_state.step = Step.START
 
     elif chat_state.step == Step.PLAN_GENERATED:
         approved = False
         if user_input.strip().lower() in ["yes", "y", "approve"]:
             approved = True
         else:
-            try:
-                cleaned_input = user_input.strip()
-                if valid_json(cleaned_input):
-                    print(True)
-                    cleaned_input = json.loads(cleaned_input)
-                else:
-                    print(False)
-                # modified_plan = ast.literal_eval(cleaned_input)
-                modified_plan = cleaned_input
-                if isinstance(modified_plan, list):
-                    approved = True
-                    chat_state.state["action_plan"] = modified_plan
-                    add_message(
-                        "assistant", "Thank you. I will now execute the modified plan."
-                    )
-                else:
-                    add_message(
-                        "assistant",
-                        "That doesn't look like a valid plan. A plan should be a list of actions. Please try again.",
-                    )
-            except (SyntaxError, ValueError):
-                add_message(
-                    "assistant",
-                    "I didn't understand that. Please either approve the plan with 'yes' or provide a valid modified plan.",
-                )
+            # For interactive mode, we'll just approve or reject
+            add_message(
+                "assistant",
+                "I didn't understand that. Please either approve the plan with 'yes' or start over by asking me to fix violations again.",
+            )
 
         if approved:
             with st.spinner("Executing the plan..."):
-                executor_command = run_executor(chat_state.state)
-                chat_state.state.update(executor_command.update)
-                final_net = pp.from_json(chat_state.state["editing_network_file_path"])
+                # The plan has already been executed in the planner node
+                # Check current violations
+                final_net = pp.from_json(chat_state.state.editing_network_file_path)
                 line_violations_after, voltage_violations_after = get_violations(
                     final_net
                 )
                 has_violations = not (
                     line_violations_after.empty and voltage_violations_after.empty
                 )
-                max_iter_reached = chat_state.state.get("iter", 0) >= MAX_ITER
+                max_iter_reached = chat_state.state.iter_num >= MAX_ITER
 
                 if has_violations and not max_iter_reached:
                     add_message(
@@ -281,16 +269,20 @@ def get_assistant_response(user_input: str):
                         "The plan was executed, but some violations remain. I will generate a new plan to address them.",
                     )
                     with st.spinner("Generating a new plan..."):
-                        planner_command = run_planner(chat_state.state)
-                        chat_state.state.update(planner_command.update)
-                        action_plan = chat_state.state.get("action_plan")
-                        if not action_plan:
-                            add_message(
-                                "assistant",
-                                "I could not generate a new plan. The process will now stop.",
-                            )
-                            chat_state.step = Step.EXECUTED
-                        else:
+                        # Run workflow for another iteration
+                        workflow = get_workflow()
+                        graph = workflow.compile()
+                        result = graph.invoke(chat_state.state)
+                        chat_state.state = result
+
+                        # Get the latest action plan
+                        if (
+                            chat_state.state.iteration_results
+                            and chat_state.state.iteration_results[-1].executed_actions
+                        ):
+                            action_plan = chat_state.state.iteration_results[
+                                -1
+                            ].executed_actions
                             plan_df = format_plan_as_table(action_plan)
                             json_plan_str = json.dumps(action_plan, indent=2)
                             message = (
@@ -301,17 +293,21 @@ def get_assistant_response(user_input: str):
                             )
                             add_message("assistant", message, plan_df=plan_df)
                             chat_state.step = Step.PLAN_GENERATED
+                        else:
+                            add_message(
+                                "assistant",
+                                "I could not generate a new plan. The process will now stop.",
+                            )
+                            chat_state.step = Step.EXECUTED
                 else:
                     with st.spinner("Summarizing the actions..."):
-                        summarizer_command = run_summarizer(chat_state.state)
-                        chat_state.state.update(summarizer_command.update)
-                        summary = chat_state.state.get("summary", "Execution complete.")
+                        # The workflow should have already completed with summary
+                        summary = chat_state.state.summary or "Execution complete."
                         add_message("assistant", summary)
 
-                        explainer_command = run_explainer(chat_state.state)
-                        chat_state.state.update(explainer_command.update)
-                        explanation = chat_state.state.get("explanation", "")
-                        add_message("assistant", explanation)
+                        explanation = chat_state.state.explanation or ""
+                        if explanation:
+                            add_message("assistant", explanation)
 
                         chat_state.step = Step.EXECUTED
 
@@ -368,11 +364,10 @@ if uploaded_file and chat_state.net is None:
     chat_state.net = net
     chat_state.state = State(
         network_file_path=str(network_file_path),
+        org_network_copy_file_path=str(network_file_path),
         editing_network_file_path=str(network_file_path),
         work_dir=str(WORKSPACE_NETWORKS.absolute()),
         messages=[],
-        network=net,
-        iter=0,
     )
     # Store initial violations
     line_v, volt_v = get_violations(net)
@@ -452,7 +447,7 @@ if chat_state.net is not None:
 
     # After execution, show the side-by-side comparison
     if chat_state.step in [Step.EXECUTED, Step.AUTO_COMPLETED]:
-        final_net = pp.from_json(chat_state.state["editing_network_file_path"])
+        final_net = pp.from_json(chat_state.state.editing_network_file_path)
         final_line_violations, final_voltage_violations = get_violations(final_net)
 
         st.header("Comparison View")
@@ -480,7 +475,7 @@ if chat_state.net is not None:
         )
         if not has_violations:
             st.success("All violations resolved successfully!")
-        elif chat_state.state.get("iter", 0) >= MAX_ITER:
+        elif chat_state.state.iter_num >= MAX_ITER:
             st.warning(
                 f"Max iterations ({MAX_ITER}) reached. Could not resolve all violations."
             )
@@ -489,7 +484,15 @@ if chat_state.net is not None:
 
         # Reset for next interaction
         chat_state.step = Step.START
-        chat_state.state["iter"] = 0
+        # Reset state for new interaction
+        network_file_path = WORKSPACE_NETWORKS / "network.json"
+        chat_state.state = State(
+            network_file_path=str(network_file_path),
+            org_network_copy_file_path=str(network_file_path),
+            editing_network_file_path=str(network_file_path),
+            work_dir=str(WORKSPACE_NETWORKS.absolute()),
+            messages=[],
+        )
 
     # Chat input should be last (disabled during automated mode)
     chat_disabled = chat_state.step in [Step.AUTO_RUNNING, Step.AUTO_COMPLETED]

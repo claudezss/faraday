@@ -33,7 +33,7 @@ class NetworkCompressor:
                     "critical" if bus.v_mag_pu > 1.1 or bus.v_mag_pu < 0.9 else "medium"
                 )
                 voltage_violations.append(
-                    f"Bus {bus.idx}: {bus.idx:.2f}pu ({severity})"
+                    f"Bus {bus.idx}: {bus.v_mag_pu:.2f}pu ({severity})"
                 )
 
         for line in status.lines:

@@ -102,11 +102,11 @@ def planner(state: State) -> State:
         state.messages += [
             {
                 "role": "user",
-                "content": f"You previously plan are: {state.all_executed_actions}",
+                "content": f"Your previously plan are: {state.all_executed_actions}",
             },
             {
                 "role": "user",
-                "content": f"However, those violations still remain: {violas.model_dump()}. "
+                "content": f"However, these violations still remain: {violas.model_dump()}. "
                 f"Please refine and generate a new plan to resolve violations.",
             },
         ]
