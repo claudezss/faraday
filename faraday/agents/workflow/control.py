@@ -5,7 +5,7 @@ Control flow logic for the workflow.
 from faraday.agents.workflow.state import State
 
 
-def should_continue(state: State, max_iterations: int = 10) -> str:
+def should_continue(state: State, max_iterations: int = 5) -> str:
     """Determines the next step in the workflow."""
     if state.iter_num >= max_iterations:
         return "summarizer"  # Go to summarizer if max iterations are reached

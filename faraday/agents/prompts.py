@@ -5,34 +5,44 @@ You are the planner for a power grid. Your task is to evaluate the network's sta
 
 **Instructions:**
 1.  Analyze the provided network status. The status has those information's:
-    - line:
-        1. name: name of the line
-        2. from_bus_idx: the index of the bus where the line starts
-        3. to_bus_idx: the index of the bus where the line ends
-        4. loading_percentage: the loading percent of the line's load
-    - bus:
-        1. name: name of the bus
-        2. idx: the index of the bus
-        3. v_mag_pu: the voltage magnitude of the bus in p.u.
+    1. **buses**: A list of all bus nodes in the network. Each bus includes:
+       - `id`: Unique identifier (e.g., "Bus5")
+       - `type`: Bus type (e.g., "slack", "load", etc.)
+       - `voltage_pu`: Actual voltage in per unit (p.u.)
+       - `voltage_violation`: Boolean indicating if voltage is out of bounds (outside 0.95–1.05 p.u.)
 
-    - switch:
-        1. name: name of the switch
-        2. closed: status of the switch, True for closed and False for open.
-        3. from_bus_idx: the index of the bus where the switch starts
-        4. to_bus_idx: the index of the bus where the switch ends
-        5. controllable: status of the switch, True for controllable and False for non-controllable.
-    - load:
-        1. name: name of the load
-        2. bus_idx: the index of bus where the load is connected to.
-        3. curtailable: status of the load, True for curtailable and False for non-curtailable.
-        4. p_mw: power consumption of the load in MW.
-        5: q_mvar: reactive power consumption of the load in MVar.
-    - generator:
-        1. name: name of the generator
-        2. bus_idx: the index of bus where the generator is connected to.
-        3. p_mw: power production of the generator in MW.
-        4. q_mvar: reactive power production of the generator in MVar.
-        5. controllable: status of the generator, True for controllable and False for non-controllable.
+    2. **lines**: A list of transmission lines connecting buses. Each line includes:
+       - `id`: Line identifier (e.g., "Line2")
+       - `from_bus` / `to_bus`: Buses it connects
+       - `length_km`, `r_ohm_per_km`, `x_ohm_per_km`: Line properties
+       - `loading_percent`: Line loading as a percentage of its capacity
+       - `thermal_violation`: Boolean indicating loading > 100%
+    
+    3. **transformers**: A list of power transformers. Each transformer includes:
+       - `id`, `hv_bus`, `lv_bus`: High/low-voltage connections
+       - `loading_percent`: Transformer loading in %
+       - `thermal_violation`: Boolean for overload
+    
+    4. **switches**: A list of switches used to reconfigure the network. Each includes:
+       - `id`, `bus`, `element_type`, `element`: What it controls
+       - `status`: "open" or "closed"
+    
+    5. **loads**: A list of loads in the network. Each includes:
+       - `id`, `bus`, `p_mw`, `q_mvar`: Load power values
+       - `status`: Whether the load is in service
+       - `curtailable`: Whether the load can be curtailed
+    
+    6. **generators**: Includes distributed energy resources (e.g., PV, wind). Each includes:
+       - `id`, `bus`, `p_mw`, `q_mvar`, `type`: Generator info
+       - `status`: Whether the generator is online
+    
+    7. **violations**: Summary of all detected violations:
+       - `voltage_violations`: List of bus IDs with voltage violations
+       - `thermal_violations`: List of line or transformer IDs with thermal violations
+        
+    6.  Identify all violations based on the following criteria:
+        - Line or transformer loading is greater than 100%.
+        - Bus voltage is less than 0.95 pu or greater than 1.05 pu.
     
 2.  Identify all violations based on the following criteria:
     - Line or transformer loading is greater than 100%.

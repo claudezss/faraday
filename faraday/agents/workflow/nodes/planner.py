@@ -5,8 +5,8 @@ Planning node for generating action plans to fix violations.
 from faraday.agents.prompts import PLANNER_PROMPT
 from faraday.agents.workflow.state import State, IterationResult
 from faraday.tools.pandapower import (
-    get_network_status,
     get_violations,
+    get_json_network_status,
 )
 from faraday.agents.workflow.config import llm
 from faraday.tools.pandapower import read_network
@@ -15,7 +15,8 @@ from faraday.tools.pandapower import (
     curtail_load,
     add_battery,
 )
-import pandapower as pp
+import json
+
 
 TOOL_MAPPING = {
     "curtail_load": curtail_load,
@@ -27,18 +28,21 @@ TOOL_MAPPING = {
 def planner(state: State) -> State:
     """Generates a structured plan (a list of tool calls) to fix violations."""
 
-    planning_network = read_network(state.org_network_copy_file_path)
+    planning_network = read_network(state.editing_network_file_path)
 
-    pp.to_json(planning_network, state.editing_network_file_path)
-
-    network_status = get_network_status(planning_network)
+    network_status = get_json_network_status(planning_network)
 
     if not state.messages:
         state.messages = [
             {"role": "system", "content": PLANNER_PROMPT},
             {
                 "role": "user",
-                "content": f"Network status: {network_status.model_dump()}",
+                "content": f"""
+**Network Status:**
+```json
+{json.dumps(network_status, indent=2)}
+```
+""",
             },
         ]
 
