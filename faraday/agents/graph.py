@@ -66,7 +66,15 @@ def planner(state: State):
     if not messages:
         messages = [
             {"role": "system", "content": Planner.prompt()},
-            {"role": "user", "content": f"Network status: {status}`"},
+            {
+                "role": "user",
+                "content": f"""
+**Network Status:**
+```json
+{json.dumps(status, indent=2)}
+```
+""",
+            },
         ]
 
     if state.get("action_plan") and state.get("violation_after_action"):

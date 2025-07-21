@@ -228,7 +228,6 @@ def get_json_network_status(net):
         bus_data = {
             "id": idx,
             "name": row["name"],
-            "vn_kv": row.vn_kv,
             "voltage_pu": round(vm_pu, 4),
             "voltage_violation": str(
                 vm_pu < thresholds.v_min or vm_pu > thresholds.v_max
@@ -245,7 +244,6 @@ def get_json_network_status(net):
             "from_bus": row.from_bus,
             "to_bus": row.to_bus,
             "loading_percent": round(loading, 2),
-            "status": "closed" if row.in_service else "open",
             "thermal_violation": str(loading > 100),
         }
         data["lines"].append(line_data)
@@ -259,7 +257,6 @@ def get_json_network_status(net):
             "hv_bus": row.hv_bus,
             "lv_bus": row.lv_bus,
             "tap_pos": row.tap_pos,
-            "status": "closed" if row.in_service else "open",
             "loading_percent": round(loading, 2),
             "thermal_violation": str(loading > 100.0),
         }
@@ -286,6 +283,7 @@ def get_json_network_status(net):
             "p_mw": row.p_mw,
             "q_mvar": row.q_mvar,
             "status": "connected" if row.in_service else "disconnected",
+            "curtailable": row.get("curtailable", False),
         }
         data["loads"].append(load)
 
