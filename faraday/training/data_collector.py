@@ -36,7 +36,7 @@ class NetworkCompressor:
                     f"Bus {bus.idx}: {bus.idx:.2f}pu ({severity})"
                 )
 
-        for line in status.lines + status.transformers:
+        for line in status.lines:
             if line.loading_percent > 100:
                 severity = "critical" if line.loading_percent > 150 else "medium"
                 thermal_violations.append(
@@ -292,19 +292,16 @@ class EnhancedTrainingDataCollector:
         network_summary = self.compressor.compress_network_status(net, status)
 
         # Extract violations from iteration results
-        iteration_results = state.get("iteration_results", [])
+        iteration_results = state.iteration_results
         violations = {"voltage": [], "thermal": []}
         success = False
 
         if iteration_results:
             latest_result = iteration_results[-1]
-            violations_after = latest_result.get(
-                "violations_after", {"voltage": [], "thermal": []}
-            )
+            violations_after = latest_result.viola_after
             success = (
-                latest_result.get("successful", False)
-                and len(violations_after.get("voltage", [])) == 0
-                and len(violations_after.get("thermal", [])) == 0
+                len(violations_after.voltage) == 0
+                and len(violations_after.thermal) == 0
             )
 
         difficulty = self.classifier.classify_difficulty(
@@ -323,7 +320,7 @@ class EnhancedTrainingDataCollector:
             + len(violations.get("thermal", [])),
             "action_count": len(executed_actions),
             "difficulty": difficulty,
-            "iterations": state.get("iter", 1),
+            "iterations": state.iter_num,
             "success": success,
         }
 
@@ -347,7 +344,7 @@ class EnhancedTrainingDataCollector:
         training_sample = {
             "metadata": metadata,
             "network_summary": network_summary,
-            "raw_network_status": status,  # Keep for validation
+            "raw_network_status": status.model_dump(),  # Keep for validation
             "formats": formats,
             "violations": violations,
             "actions": executed_actions,

@@ -18,6 +18,7 @@ def summarizer(state: State) -> State:
         )
         summary_prompt = SUMMARIZER_PROMPT.format(action_report=action_report)
         summary = llm.invoke(summary_prompt).content
+
     state.summary = summary
 
     return state

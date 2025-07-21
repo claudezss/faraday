@@ -15,8 +15,11 @@ from faraday.tools.pandapower import (
     curtail_load,
     add_battery,
 )
+import logging
 import json
 
+
+logger = logging.getLogger(__name__)
 
 TOOL_MAPPING = {
     "curtail_load": curtail_load,
@@ -27,6 +30,8 @@ TOOL_MAPPING = {
 
 def planner(state: State) -> State:
     """Generates a structured plan (a list of tool calls) to fix violations."""
+
+    logger.info(f"Iteration {state.iter_num}: Planning")
 
     planning_network = read_network(state.editing_network_file_path)
 
@@ -54,6 +59,7 @@ def planner(state: State) -> State:
 
     executed_actions = []
 
+    logger.info(f"Iteration {state.iter_num}: Executing Plan")
     for tool_call in plan:
         tool_name = tool_call.get("name")
         arguments = tool_call.get("args")

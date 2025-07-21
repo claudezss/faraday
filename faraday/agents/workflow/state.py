@@ -84,21 +84,25 @@ class ActionEffectiveness(BaseModel):
 
 class State(BaseModel):
     # Core file paths
-    network_file_path: Optional[str] = Field("./")  # Original network file
-    org_network_copy_file_path: Optional[str] = Field("./")
+    network_file_path: Optional[str] = Field(default="./")  # Original network file
+    org_network_copy_file_path: Optional[str] = Field(default="./")
     editing_network_file_path: Optional[str] = Field(
-        "./"
+        default="./"
     )  # Current working network file
-    work_dir: Optional[str] = Field("./")  # Working directory for temporary files
+    work_dir: Optional[str] = Field(
+        default="./"
+    )  # Working directory for temporary files
 
     # Iteration tracking
     iteration_results: Optional[List[IterationResult]] = Field(default_factory=list)
 
     messages: Annotated[list, add_messages] = Field(default_factory=list)
 
-    summary: Optional[str] = Field("")
+    summary: Optional[str] = Field(default="")
 
-    explanation: Optional[str] = Field("")
+    explanation: Optional[str] = Field(default="")
+
+    max_iterations: int = 5
 
     @property
     def all_executed_actions(self) -> List[Dict[str, Any]]:

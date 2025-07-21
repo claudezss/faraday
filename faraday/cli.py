@@ -5,17 +5,18 @@ CLI interface for faraday to fix power grid violations.
 import argparse
 import sys
 from pathlib import Path
-from typing import Dict, Any
 
 import pandapower as pp
 from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from faraday.agents.workflow.graph import get_workflow
-from faraday.agents.workflow.state import State
 from faraday.tools.pandapower import (
-    get_network_status,
+    get_violations,
+)
+from faraday.agents.workflow.graph import get_workflow
+from faraday.agents.workflow.state import State, Violation
+from faraday.tools.pandapower import (
     read_network,
     get_voltage_thresholds,
     set_voltage_thresholds,
@@ -40,10 +41,10 @@ def validate_network_file(network_path: Path) -> bool:
         return False
 
 
-def print_violations(violations: Dict[str, Any], title: str = "Violations") -> None:
+def print_violations(violation: Violation, title: str = "Violations") -> None:
     """Print violations in a formatted table."""
-    voltage_violations = violations.get("voltage", [])
-    thermal_violations = violations.get("thermal", [])
+    voltage_violations = violation.voltage
+    thermal_violations = violation.thermal
 
     if not voltage_violations and not thermal_violations:
         console.print(f"✅ {title}: No violations found", style="green")
@@ -61,11 +62,11 @@ def print_violations(violations: Dict[str, Any], title: str = "Violations") -> N
             thresholds = get_voltage_thresholds()
             severity = (
                 "🔴 Critical"
-                if v["v_mag_pu"] > thresholds.high_violation_upper
-                or v["v_mag_pu"] < thresholds.high_violation_lower
+                if v.v_mag_pu > thresholds.high_violation_upper
+                or v.v_mag_pu < thresholds.high_violation_lower
                 else "🟡 Medium"
             )
-            table.add_row(str(v["bus_idx"]), f"{v['v_mag_pu']:.3f}", severity)
+            table.add_row(str(v.bus_idx), f"{v.v_mag_pu:.3f}", severity)
 
         console.print(table)
 
@@ -76,8 +77,8 @@ def print_violations(violations: Dict[str, Any], title: str = "Violations") -> N
         table.add_column("Severity", justify="center")
 
         for v in thermal_violations:
-            severity = "🔴 Critical" if v["loading"] > 120 else "🟡 Medium"
-            table.add_row(v["line_name"], f"{v['loading']:.1f}", severity)
+            severity = "🔴 Critical" if v.loading_percent > 120 else "🟡 Medium"
+            table.add_row(v.name, f"{v.loading_percent:.1f}", severity)
 
         console.print(table)
 
@@ -122,20 +123,7 @@ def run_workflow(
     """Run the complete workflow to fix violations."""
 
     # Initialize state
-    state = State(
-        network_file_path=str(network_path),
-        editing_network_file_path=None,
-        work_dir=None,
-        network=None,
-        violation_before_action=None,
-        violation_after_action=None,
-        messages=[],
-        action_plan=None,
-        executed_actions=None,
-        summary=None,
-        explanation=None,
-        iter=0,
-    )
+    state = State(network_file_path=str(network_path), max_iterations=max_iterations)
 
     # Get workflow
     workflow = get_workflow()
@@ -148,26 +136,12 @@ def run_workflow(
     # Initial network analysis
     net = read_network(str(network_path))
     pp.runpp(net)
-    initial_status = get_network_status(net)
 
-    # Extract initial violations
-    thresholds = get_voltage_thresholds()
-    initial_violations = {
-        "voltage": [
-            {"bus_idx": bus["index"], "v_mag_pu": bus["v_mag_pu"]}
-            for bus in initial_status.get("bus_status", [])
-            if bus["v_mag_pu"] > thresholds.v_max or bus["v_mag_pu"] < thresholds.v_min
-        ],
-        "thermal": [
-            {"line_name": line["name"], "loading": line["loading_percent"]}
-            for line in initial_status.get("line_status", [])
-            if line["loading_percent"] > 100
-        ],
-    }
+    initial_violations = get_violations(net)
 
     print_violations(initial_violations, "Initial Violations")
 
-    if not initial_violations["voltage"] and not initial_violations["thermal"]:
+    if not initial_violations.voltage and not initial_violations.thermal:
         console.print(
             "✅ No violations found. Network is already compliant.", style="green"
         )
@@ -184,7 +158,7 @@ def run_workflow(
             task = progress.add_task("Processing network violations...", total=None)
 
             # Execute the workflow
-            result = graph.invoke(state)
+            result = State(**graph.invoke(state))
 
             progress.update(task, description="Workflow completed")
 
@@ -192,31 +166,30 @@ def run_workflow(
         console.print("\n📊 Workflow Results:", style="cyan")
 
         # Show executed actions
-        executed_actions = result.get("executed_actions", [])
+        executed_actions = result.all_executed_actions
         print_actions(executed_actions)
 
         # Show final violations
-        final_violations = result.get(
-            "violation_after_action", {"voltage": [], "thermal": []}
-        )
+        final_violations = result.iteration_results[-1].viola_after
         print_violations(final_violations, "Final Violations")
 
         # Show summary
-        summary = result.get("summary", "")
+        summary = result.summary
         if summary:
             console.print(f"\n📝 Summary: {summary}", style="blue")
 
         # Show explanation
-        explanation = result.get("explanation", "")
+        explanation = result.explanation
         if explanation and verbose:
             console.print(f"\n💡 Explanation: {explanation}", style="blue")
 
         # Final status
-        total_final_violations = len(final_violations["voltage"]) + len(
-            final_violations["thermal"]
+        total_final_violations = len(final_violations.voltage) + len(
+            final_violations.thermal
         )
-        total_initial_violations = len(initial_violations["voltage"]) + len(
-            initial_violations["thermal"]
+
+        total_initial_violations = len(initial_violations.voltage) + len(
+            initial_violations.thermal
         )
 
         if total_final_violations == 0:
