@@ -26,7 +26,6 @@ def create_base_networks():
             DATA_DIR / "base_networks" / "cigre_mv_modified.json"
         ),
         "case30": pp.from_json(DATA_DIR / "base_networks" / "case30_no_viol.json"),
-        "case118": pp.from_json(DATA_DIR / "base_networks" / "case118_no_viol.json"),
     }
 
     return base_networks
@@ -64,12 +63,6 @@ def generate_test_scenarios(output_dir: Path):
         {
             "name": "case30_light",
             "base": "case30",
-            "severity": "light",
-        },
-        # Case118 scenarios
-        {
-            "name": "case118_light",
-            "base": "case118",
             "severity": "light",
         },
     ]

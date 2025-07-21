@@ -11,14 +11,14 @@ import uuid
 
 import pandapower as pp
 from faraday.tools.pandapower import get_network_status
-from faraday.schemas import State
+from faraday.agents.workflow.state import State, NetworkState
 
 
 class NetworkCompressor:
     """Compress network status into token-efficient representations."""
 
     @staticmethod
-    def compress_network_status(net: pp.pandapowerNet, status: Dict) -> str:
+    def compress_network_status(net: pp.pandapowerNet, status: NetworkState) -> str:
         """Create a compressed, human-readable network summary."""
         total_buses = len(net.bus)
         total_lines = len(net.line) + len(net.trafo)
@@ -27,33 +27,25 @@ class NetworkCompressor:
         voltage_violations = []
         thermal_violations = []
 
-        for bus in status.get("bus_status", []):
-            if bus["v_mag_pu"] > 1.05 or bus["v_mag_pu"] < 0.95:
+        for bus in status.buses:
+            if bus.v_mag_pu > 1.05 or bus.v_mag_pu < 0.95:
                 severity = (
-                    "critical"
-                    if bus["v_mag_pu"] > 1.1 or bus["v_mag_pu"] < 0.9
-                    else "medium"
+                    "critical" if bus.v_mag_pu > 1.1 or bus.v_mag_pu < 0.9 else "medium"
                 )
                 voltage_violations.append(
-                    f"Bus {bus['index']}: {bus['v_mag_pu']:.2f}pu ({severity})"
+                    f"Bus {bus.idx}: {bus.v_mag_pu:.2f}pu ({severity})"
                 )
 
-        for line in status.get("line_status", []):
-            if line["loading_percent"] > 100:
-                severity = "critical" if line["loading_percent"] > 150 else "medium"
+        for line in status.lines:
+            if line.loading_percent > 100:
+                severity = "critical" if line.loading_percent > 150 else "medium"
                 thermal_violations.append(
-                    f"{line['name']}: {line['loading_percent']:.0f}% ({severity})"
+                    f"{line.name}: {line.loading_percent:.0f}% ({severity})"
                 )
 
         # Extract resources
-        switches = [
-            sw["name"] for sw in status.get("switch_status", []) if sw.get("name")
-        ]
-        curtailable_loads = [
-            load["name"]
-            for load in status.get("load_status", [])
-            if load.get("curtailable", False)
-        ]
+        switches = [sw.name for sw in status.switches]
+        curtailable_loads = [load.name for load in status.loads if load.curtailable]
 
         # Build compact summary
         summary_parts = [
@@ -292,17 +284,26 @@ class EnhancedTrainingDataCollector:
         """Collect a comprehensive training sample."""
 
         # Load network and get status
-        net = pp.from_json(state["network_file_path"])
+        net = pp.from_json(state.org_network_copy_file_path)
         pp.runpp(net)
         status = get_network_status(net)
 
         # Compress network representation
         network_summary = self.compressor.compress_network_status(net, status)
 
-        # Extract violations for difficulty classification
-        violations = state.get(
-            "violation_before_action", {"voltage": [], "thermal": []}
-        )
+        # Extract violations from iteration results
+        iteration_results = state.iteration_results
+        violations = {"voltage": [], "thermal": []}
+        success = False
+
+        if iteration_results:
+            latest_result = iteration_results[-1]
+            violations_after = latest_result.viola_after
+            success = (
+                len(violations_after.voltage) == 0
+                and len(violations_after.thermal) == 0
+            )
+
         difficulty = self.classifier.classify_difficulty(
             net, violations, executed_actions
         )
@@ -319,10 +320,8 @@ class EnhancedTrainingDataCollector:
             + len(violations.get("thermal", [])),
             "action_count": len(executed_actions),
             "difficulty": difficulty,
-            "iterations": state.get("iter", 1),
-            "success": len(state.get("violation_after_action", {}).get("voltage", []))
-            == 0
-            and len(state.get("violation_after_action", {}).get("thermal", [])) == 0,
+            "iterations": state.iter_num,
+            "success": success,
         }
 
         # Generate multiple training formats
@@ -345,7 +344,7 @@ class EnhancedTrainingDataCollector:
         training_sample = {
             "metadata": metadata,
             "network_summary": network_summary,
-            "raw_network_status": status,  # Keep for validation
+            "raw_network_status": status.model_dump(),  # Keep for validation
             "formats": formats,
             "violations": violations,
             "actions": executed_actions,

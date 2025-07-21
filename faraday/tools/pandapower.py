@@ -1,3 +1,4 @@
+from itertools import chain
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import pandapower as pp
@@ -6,6 +7,7 @@ import json
 from collections import defaultdict
 from enum import Enum
 from dataclasses import dataclass
+from faraday.agents.workflow.state import NetworkState, Violation
 
 
 @dataclass
@@ -81,7 +83,7 @@ def read_network(network_path: str) -> pp.pandapowerNet:
 def get_load_status(net: pp.pandapowerNet) -> list[dict]:
     loads = [
         {
-            "bus": int(row["bus"]),
+            "bus_idx": int(row["bus"]),
             "name": row["name"],
             "p_mw": round(float(row["p_mw"]), 3),
             "q_mvar": round(float(row["q_mvar"]), 3),
@@ -95,10 +97,11 @@ def get_load_status(net: pp.pandapowerNet) -> list[dict]:
 def get_sync_generator_status(net: pp.pandapowerNet) -> list[dict]:
     sgens = [
         {
-            "bus": int(row["bus"]),
+            "bus_idx": int(row["bus"]),
             "name": row["name"],
             "p_mw": round(float(row["p_mw"]), 3),
             "q_mvar": round(float(row["q_mvar"]), 3),
+            "controllable": bool(row.get("controllable", False)),
         }
         for _, row in net.sgen.iterrows()
     ]
@@ -108,12 +111,13 @@ def get_sync_generator_status(net: pp.pandapowerNet) -> list[dict]:
 def get_switch_status(net: pp.pandapowerNet) -> list[dict]:
     sw = [
         {
-            "bus": int(row["bus"]),
-            "element": int(row["element"]),
+            "from_bus_idx": int(row["bus"]),
+            "to_bus_idx": int(row["element"]),
             "name": row["name"],
             "closed": row["closed"],
+            "controllable": bool(row.get("controllable", True)),
         }
-        for _, row in net.switch.iterrows()
+        for _, row in net.switch[net.switch.et == "l"].iterrows()
     ]
     return sw
 
@@ -121,10 +125,9 @@ def get_switch_status(net: pp.pandapowerNet) -> list[dict]:
 def get_bus_status(net: pp.pandapowerNet) -> list[dict]:
     buses = [
         {
-            "index": i,
+            "idx": i,
             "name": row["name"],
             "v_mag_pu": round(float(net.res_bus.vm_pu.iloc[idx]), 3),
-            "v_angle_degree": round(float(net.res_bus.va_degree.iloc[idx]), 3),
         }
         for idx, (i, row) in enumerate(net.bus.iterrows())
     ]
@@ -136,8 +139,8 @@ def get_line_status(net: pp.pandapowerNet) -> list[dict]:
         {
             "name": row["name"],
             "loading_percent": round(float(net.res_line.loading_percent.iloc[idx]), 3),
-            "from_bus": int(row["from_bus"]),
-            "to_bus": int(row["to_bus"]),
+            "from_bus_idx": int(row["from_bus"]),
+            "to_bus_idx": int(row["to_bus"]),
         }
         for idx, (i, row) in enumerate(net.line.iterrows())
     ]
@@ -146,8 +149,8 @@ def get_line_status(net: pp.pandapowerNet) -> list[dict]:
         {
             "name": row["name"],
             "loading_percent": round(float(net.res_trafo.loading_percent.iloc[idx]), 3),
-            "from_bus": int(row["hv_bus"]),
-            "to_bus": int(row["lv_bus"]),
+            "from_bus_idx": int(row["hv_bus"]),
+            "to_bus_idx": int(row["lv_bus"]),
         }
         for idx, (i, row) in enumerate(net.trafo.iterrows())
     ]
@@ -156,22 +159,15 @@ def get_line_status(net: pp.pandapowerNet) -> list[dict]:
 
 def get_network_status(
     network,
-    violations_only: bool = False,
-    hierarchical: bool = False,
-) -> dict[str, Any]:
+) -> NetworkState:
     """
     Get the status of the network.
 
     Args:
         network: the pandapower network object.
-        violations_only: if True, only include buses/lines with violations.
-        hierarchical: if True, return hierarchical representation for large networks.
     """
     net = network
     pp.runpp(net)
-
-    if hierarchical:
-        return get_hierarchical_network_status(net)
 
     load_status = get_load_status(net)
     sync_generator_status = get_sync_generator_status(net)
@@ -179,32 +175,213 @@ def get_network_status(
     bus_status = get_bus_status(net)
     line_status = get_line_status(net)
 
-    if violations_only:
-        # Filter for violations only
-        thresholds = get_voltage_thresholds()
-        bus_status = [
-            bus
-            for bus in bus_status
-            if bus["v_mag_pu"] > thresholds.v_max or bus["v_mag_pu"] < thresholds.v_min
-        ]
-        line_status = [line for line in line_status if line["loading_percent"] > 100]
-        # Only include loads/generators on buses with violations
-        violation_buses = {bus["index"] for bus in bus_status}
-        load_status = [load for load in load_status if load["bus"] in violation_buses]
-        sync_generator_status = [
-            gen for gen in sync_generator_status if gen["bus"] in violation_buses
-        ]
-        switch_status = [sw for sw in switch_status if sw["bus"] in violation_buses]
+    status = defaultdict(
+        buses=bus_status,
+        switches=switch_status,
+        lines=line_status,
+        loads=load_status,
+        generators=sync_generator_status,
+    )
 
-    status = {
-        "load_status": load_status,
-        "sync_generator_status": sync_generator_status,
-        "switch_status": switch_status,
-        "bus_status": bus_status,
-        "line_status": line_status,
+    return NetworkState.model_validate(status)
+
+
+def get_json_network_status(net):
+    pp.runpp(net)
+
+    data = {
+        "buses": [],
+        "lines": [],
+        "transformers": [],
+        "switches": [],
+        "generators": [],
+        "loads": [],
+        "violations": {"voltage_violations": [], "thermal_violations": []},
     }
 
-    return status
+    thresholds = get_voltage_thresholds()
+
+    # Buses with voltages
+    for idx, row in net.bus.iterrows():
+        vm_pu = net.res_bus.loc[idx, "vm_pu"]
+        bus_data = {
+            "id": idx,
+            "name": row["name"],
+            "voltage_pu": round(vm_pu, 4),
+            "voltage_violation": str(
+                vm_pu < thresholds.v_min or vm_pu > thresholds.v_max
+            ),
+        }
+        data["buses"].append(bus_data)
+
+    # Lines with loading %
+    for idx, row in net.line.iterrows():
+        loading = net.res_line.loc[idx, "loading_percent"]
+        line_data = {
+            "id": idx,
+            "name": row["name"],
+            "from_bus": row.from_bus,
+            "to_bus": row.to_bus,
+            "loading_percent": round(loading, 2),
+            "thermal_violation": str(loading > 100),
+        }
+        data["lines"].append(line_data)
+
+    # Transformers
+    for idx, row in net.trafo.iterrows():
+        loading = net.res_trafo.loc[idx, "loading_percent"]
+        trafo_data = {
+            "id": idx,
+            "name": row["name"],
+            "hv_bus": row.hv_bus,
+            "lv_bus": row.lv_bus,
+            "tap_pos": row.tap_pos,
+            "loading_percent": round(loading, 2),
+            "thermal_violation": str(loading > 100.0),
+        }
+
+        data["transformers"].append(trafo_data)
+
+    # Switches
+    for idx, row in net.switch.iterrows():
+        switch = {
+            "id": idx,
+            "name": row["name"],
+            "bus": row.bus,
+            "element": row.element,
+            "status": "closed" if row.closed else "open",
+        }
+        data["switches"].append(switch)
+
+    # Loads
+    for idx, row in net.load.iterrows():
+        load = {
+            "id": idx,
+            "name": row["name"],
+            "bus": row.bus,
+            "p_mw": row.p_mw,
+            "q_mvar": row.q_mvar,
+            "status": "connected" if row.in_service else "disconnected",
+            "curtailable": row.get("curtailable", False),
+        }
+        data["loads"].append(load)
+
+    # Generators
+    for idx, row in net.sgen.iterrows():
+        gen = {
+            "id": idx,
+            "name": row["name"],
+            "bus": row.bus,
+            "p_mw": row.p_mw,
+            "q_mvar": row.q_mvar,
+            "type": row.get("type", "sgen"),
+            "status": "connected" if row.in_service else "disconnected",
+        }
+        data["generators"].append(gen)
+
+    voltage_violations = []
+    thermal_violations = []
+
+    for idx, (i, row) in enumerate(net.bus.iterrows()):
+        v_mag = net.res_bus.vm_pu.iloc[idx]
+        if v_mag > thresholds.v_max or v_mag < thresholds.v_min:
+            voltage_violations.append(
+                {
+                    "bus": i,
+                    "name": row["name"],
+                    "v_mag_pu": round(float(v_mag), 3),
+                    "severity": "high"
+                    if v_mag > thresholds.high_violation_upper
+                    or v_mag < thresholds.high_violation_lower
+                    else "medium",
+                }
+            )
+
+    for idx, (i, row) in enumerate(net.line.iterrows()):
+        loading = net.res_line.loading_percent.iloc[idx]
+        if loading > 100:
+            thermal_violations.append(
+                {
+                    "name": row["name"],
+                    "loading_percent": round(float(loading), 3),
+                    "from_bus": int(row["from_bus"]),
+                    "to_bus": int(row["to_bus"]),
+                    "severity": "high" if loading > 120 else "medium",
+                }
+            )
+
+    for idx, (i, row) in enumerate(net.trafo.iterrows()):
+        loading = net.res_trafo.loading_percent.iloc[idx]
+        if loading > 100:
+            thermal_violations.append(
+                {
+                    "name": row["name"],
+                    "loading_percent": round(float(loading), 3),
+                    "from_bus": int(row["hv_bus"]),
+                    "to_bus": int(row["lv_bus"]),
+                    "severity": "high" if loading > 120 else "medium",
+                }
+            )
+    data["violations"] = {}
+    data["violations"]["voltage"] = voltage_violations
+    data["violations"]["thermal"] = thermal_violations
+    return data
+
+
+def get_violations(
+    network: pp.pandapowerNet,
+    v_max: float = 1.05,
+    v_min: float = 0.95,
+    thermal_limit: float = 100,
+) -> Violation:
+    pp.runpp(network)
+
+    v_viola = network.res_bus[
+        (network.res_bus.vm_pu > v_max) | (network.res_bus.vm_pu < v_min)
+    ]
+
+    v_viola_dicts = [
+        {
+            "bus_idx": i,
+            "v_mag_pu": v["vm_pu"],
+        }
+        for i, v in v_viola.iterrows()
+    ]
+
+    network.res_line["name"] = network.line.name
+    network.res_line["from_bus"] = network.line.from_bus
+    network.res_line["to_bus"] = network.line.to_bus
+
+    network.res_trafo["name"] = network.trafo.name
+    network.res_trafo["from_bus"] = network.trafo.hv_bus
+    network.res_trafo["to_bus"] = network.trafo.lv_bus
+
+    line_thermal_viola = network.res_line[
+        network.res_line.loading_percent > thermal_limit
+    ]
+    trafo_thermal_viola = network.res_trafo[
+        network.res_trafo.loading_percent > thermal_limit
+    ]
+
+    thermal_viola_dicts = [
+        {
+            "name": v["name"],
+            "from_bus_idx": v["from_bus"],
+            "to_bus_idx": v["to_bus"],
+            "loading_percent": v["loading_percent"],
+        }
+        for i, v in chain(line_thermal_viola.iterrows(), trafo_thermal_viola.iterrows())
+    ]
+
+    disconnected_buses = network.bus.index[network.res_bus.vm_pu.isna()].tolist()
+
+    return Violation.model_validate(
+        {
+            "voltage": v_viola_dicts,
+            "thermal": thermal_viola_dicts,
+            "disconnected_buses": disconnected_buses,
+        }
+    )
 
 
 def get_electrical_zones(
