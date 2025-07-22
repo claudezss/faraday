@@ -1,0 +1,27 @@
+{
+  "base_network": "ieee69",
+  "severity": "severe",
+  "test_case": "drop_1_line",
+  "solutions": [
+    {
+      "switch": [
+        {
+          "name": "Tie_Line_Switch_50-59",
+          "closed": true
+        },
+        {
+          "name": "Tie_Line_Switch_11-44",
+          "closed": true
+        },
+        {
+          "name": "Tie_Line_Switch_1-10",
+          "closed": true
+        },
+        {
+          "name": "Tie_Line_Switch_1-11",
+          "closed": true
+        }
+      ]
+    }
+  ]
+}
