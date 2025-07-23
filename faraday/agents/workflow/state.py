@@ -20,6 +20,15 @@ class Violation(BaseModel):
     thermal: List[ThermalViolation]
     disconnected_buses: List[int]
 
+    @property
+    def is_resolved(self) -> bool:
+        """Check if all violations are resolved."""
+        return (
+            len(self.thermal) == 0
+            and len(self.voltage) == 0
+            and len(self.disconnected_buses) == 0
+        )
+
 
 class IterationResult(BaseModel):
     iter: int

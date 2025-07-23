@@ -12,11 +12,7 @@ def should_continue(state: State) -> str:
 
     viola = state.iteration_results[-1].viola_after
 
-    if (
-        len(viola.voltage) > 0
-        or len(viola.thermal) > 0
-        or len(viola.disconnected_buses) > 0
-    ):
+    if not viola.is_resolved:
         return "planner"
 
     return "summarizer"  # Go to summarizer if violations are resolved

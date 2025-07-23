@@ -35,6 +35,7 @@ class ChatSessionState:
     net: pp.pandapowerNet = None
     initial_line_violations: pd.DataFrame = field(default_factory=pd.DataFrame)
     initial_voltage_violations: pd.DataFrame = field(default_factory=pd.DataFrame)
+    initial_disconnected_buses: list = field(default_factory=list)
     auto_mode: bool = False
     auto_result: dict = field(default_factory=dict)
 
@@ -69,14 +70,24 @@ def get_violations(net):
     voltage_violations = net.res_bus[
         (net.res_bus.vm_pu > thresholds.v_max) | (net.res_bus.vm_pu < thresholds.v_min)
     ]
-    return line_violations, voltage_violations
+    # Find disconnected buses (NaN voltage values)
+    disconnected_buses = net.bus.index[net.res_bus.vm_pu.isna()].tolist()
+    return line_violations, voltage_violations, disconnected_buses
 
 
-def display_violation_data(container, line_violations, voltage_violations):
+def display_violation_data(
+    container, line_violations, voltage_violations, disconnected_buses=None
+):
     container.write("Thermal Violations:")
     container.dataframe(line_violations)
     container.write("Voltage Violations:")
     container.dataframe(voltage_violations)
+    if disconnected_buses is not None and len(disconnected_buses) > 0:
+        container.write("Disconnected Buses:")
+        disconnected_df = pd.DataFrame({"Bus Index": disconnected_buses})
+        container.dataframe(disconnected_df)
+    elif disconnected_buses is not None:
+        container.write("Disconnected Buses: None")
 
 
 def add_message(role, content, plan_df=None):
@@ -255,8 +266,8 @@ def get_assistant_response(user_input: str):
                 # The plan has already been executed in the planner node
                 # Check current violations
                 final_net = pp.from_json(chat_state.state.editing_network_file_path)
-                line_violations_after, voltage_violations_after = get_violations(
-                    final_net
+                line_violations_after, voltage_violations_after, disconnected_after = (
+                    get_violations(final_net)
                 )
                 has_violations = not (
                     line_violations_after.empty and voltage_violations_after.empty
@@ -345,9 +356,10 @@ if v_max != current_thresholds.v_max or v_min != current_thresholds.v_min:
     st.sidebar.success(f"✅ Updated thresholds: v_max={v_max}, v_min={v_min}")
     # If network is loaded, refresh violation detection
     if chat_state.net is not None:
-        line_v, volt_v = get_violations(chat_state.net)
+        line_v, volt_v, disconn_v = get_violations(chat_state.net)
         chat_state.initial_line_violations = line_v
         chat_state.initial_voltage_violations = volt_v
+        chat_state.initial_disconnected_buses = disconn_v
 
 st.sidebar.info(
     f"Current: v_max={current_thresholds.v_max}, v_min={current_thresholds.v_min}"
@@ -370,9 +382,10 @@ if uploaded_file and chat_state.net is None:
         messages=[],
     )
     # Store initial violations
-    line_v, volt_v = get_violations(net)
+    line_v, volt_v, disconn_v = get_violations(net)
     chat_state.initial_line_violations = line_v
     chat_state.initial_voltage_violations = volt_v
+    chat_state.initial_disconnected_buses = disconn_v
 
 if chat_state.net is not None:
     # Mode selection
@@ -419,6 +432,7 @@ if chat_state.net is not None:
         init_net_col_1,
         chat_state.initial_line_violations,
         chat_state.initial_voltage_violations,
+        chat_state.initial_disconnected_buses,
     )
     init_net_col_1.write("Load Info:")
     init_net_col_1.dataframe(chat_state.net.load)
@@ -448,7 +462,9 @@ if chat_state.net is not None:
     # After execution, show the side-by-side comparison
     if chat_state.step in [Step.EXECUTED, Step.AUTO_COMPLETED]:
         final_net = pp.from_json(chat_state.state.editing_network_file_path)
-        final_line_violations, final_voltage_violations = get_violations(final_net)
+        final_line_violations, final_voltage_violations, final_disconnected = (
+            get_violations(final_net)
+        )
 
         st.header("Comparison View")
         col1, col2 = st.columns(2)
@@ -458,13 +474,16 @@ if chat_state.net is not None:
                 st,
                 chat_state.initial_line_violations,
                 chat_state.initial_voltage_violations,
+                chat_state.initial_disconnected_buses,
             )
             with st.expander("Initial Network Plot", expanded=True):
                 fig = pp.plotting.plotly.pf_res_plotly(chat_state.net, auto_open=False)
                 st.plotly_chart(fig, use_container_width=True, key="initial_plot")
         with col2:
             st.subheader("Final Network Status")
-            display_violation_data(st, final_line_violations, final_voltage_violations)
+            display_violation_data(
+                st, final_line_violations, final_voltage_violations, final_disconnected
+            )
             with st.expander("Final Network Plot", expanded=True):
                 fig = pp.plotting.plotly.pf_res_plotly(final_net, auto_open=False)
                 st.plotly_chart(fig, use_container_width=True, key="final_plot")
