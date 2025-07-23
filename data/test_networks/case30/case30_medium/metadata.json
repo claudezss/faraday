@@ -1,0 +1,20 @@
+{
+  "name": "case30_medium",
+  "description": "Test network with 0 violations",
+  "buses": 30,
+  "lines": 41,
+  "loads": 20,
+  "generators": 0,
+  "transformers": 0,
+  "switches": 0,
+  "validation": {
+    "converged": true,
+    "voltage_violations": [],
+    "thermal_violations": [],
+    "total_violations": 0,
+    "curtailable_loads": 3,
+    "controllable_dg": 0,
+    "switches": 0,
+    "battery_sites": 0
+  }
+}

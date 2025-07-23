@@ -1,0 +1,31 @@
+{
+  "name": "case30_light",
+  "description": "Test network with 2 violations",
+  "buses": 30,
+  "lines": 41,
+  "loads": 20,
+  "generators": 0,
+  "transformers": 0,
+  "switches": 0,
+  "validation": {
+    "converged": true,
+    "voltage_violations": [
+      {
+        "bus": 7,
+        "voltage_pu": 0.9456631767380567,
+        "type": "undervoltage"
+      },
+      {
+        "bus": 13,
+        "voltage_pu": 0.9484291162780945,
+        "type": "undervoltage"
+      }
+    ],
+    "thermal_violations": [],
+    "total_violations": 2,
+    "curtailable_loads": 3,
+    "controllable_dg": 0,
+    "switches": 0,
+    "battery_sites": 0
+  }
+}

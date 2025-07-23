@@ -1,0 +1,23 @@
+{
+  "base_network": "cigre_mv",
+  "severity": "medium",
+  "test_case": "2_small_loads",
+  "solutions": [
+    {
+      "switch": [
+        {
+          "name": "S1",
+          "closed": true
+        },
+        {
+          "name": "S2",
+          "closed": true
+        },
+        {
+          "name": "S3",
+          "closed": true
+        }
+      ]
+    }
+  ]
+}

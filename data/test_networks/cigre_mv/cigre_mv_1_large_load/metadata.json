@@ -1,0 +1,37 @@
+{
+  "base_network": "cigre_mv",
+  "severity": "serve",
+  "test_case": "1_large_loads",
+  "solutions": [
+    {
+      "switch": [
+        {
+          "name": "S1",
+          "closed": true
+        },
+        {
+          "name": "S2",
+          "closed": true
+        },
+        {
+          "name": "S3",
+          "closed": true
+        }
+      ],
+      "battery": [
+        {
+          "bus": 7,
+          "p_mw": 1
+        },
+        {
+          "bus": 7,
+          "p_mw": 1
+        },
+        {
+          "bus": 7,
+          "p_mw": 1
+        }
+      ]
+    }
+  ]
+}

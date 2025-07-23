@@ -1,0 +1,15 @@
+{
+  "base_network": "cigre_mv",
+  "severity": "severe",
+  "test_case": "drop_1_line",
+  "solutions": [
+    {
+      "switch": [
+        {
+          "name": "S1",
+          "closed": true
+        }
+      ]
+    }
+  ]
+}
