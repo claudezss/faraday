@@ -302,6 +302,7 @@ class EnhancedTrainingDataCollector:
             success = (
                 len(violations_after.voltage) == 0
                 and len(violations_after.thermal) == 0
+                and len(violations_after.disconnected_buses) == 0
             )
 
         difficulty = self.classifier.classify_difficulty(

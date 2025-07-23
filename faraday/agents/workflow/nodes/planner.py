@@ -90,7 +90,11 @@ def planner(state: State) -> State:
 
     state.iteration_results.append(iter_results)
 
-    if len(violas.thermal) == 0 and len(violas.voltage) == 0:
+    if (
+        len(violas.thermal) == 0
+        and len(violas.voltage)
+        and len(violas.disconnected_buses) == 0
+    ):
         state.messages += [
             {
                 "role": "user",
