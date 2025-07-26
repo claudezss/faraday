@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 from typing import Dict, List
+import pandapower as pp
 
 from matplotlib.gridspec import GridSpec
 
@@ -37,9 +38,15 @@ plt.rcParams.update(PAPER_CONFIG)
 class BenchmarkVisualizer:
     """Create publication-quality figures for research papers."""
 
-    def __init__(self, results_dir: Path = None, output_dir: Path = None):
+    def __init__(
+        self,
+        results_dir: Path = None,
+        output_dir: Path = None,
+        test_network_dir: Path = None,
+    ):
         self.results_dir = results_dir or Path("benchmark_results")
         self.output_dir = output_dir or Path("figures")
+        self.test_network_dir = test_network_dir or Path("data/test_networks")
         self.output_dir.mkdir(exist_ok=True)
 
         # Color schemes for different chart types
@@ -51,6 +58,60 @@ class BenchmarkVisualizer:
             "gemini-2.5-pro": "#e377c2",
             "gemini-2.5-flash": "#7f7f7f",
         }
+
+        # Cache for network information
+        self._network_cache = {}
+
+    def _get_network_info(self, network_name: str) -> Dict:
+        """Load network information from pandapower file."""
+        if network_name in self._network_cache:
+            return self._network_cache[network_name]
+
+        # Try to find the network file
+        network_file = None
+
+        # Check different network file patterns
+        for subdir in ["case30", "ieee69", "cigre_mv"]:
+            # Try both net.json and network.json
+            for filename in ["net.json", "network.json"]:
+                potential_path = (
+                    self.test_network_dir / subdir / network_name / filename
+                )
+                if potential_path.exists():
+                    network_file = potential_path
+                    break
+            if network_file:
+                break
+
+        if not network_file:
+            # Return empty info if file not found
+            self._network_cache[network_name] = {}
+            return {}
+
+        try:
+            # Load network using pandapower
+            net = pp.from_json(str(network_file))
+
+            network_info = {
+                "buses": len(net.bus),
+                "lines": len(net.line),
+                "loads": len(net.load),
+                "generators": len(net.gen)
+                if hasattr(net, "gen") and not net.gen.empty
+                else 0,
+                "transformers": len(net.trafo)
+                if hasattr(net, "trafo") and not net.trafo.empty
+                else 0,
+                "total_elements": len(net.bus) + len(net.line) + len(net.load),
+            }
+
+            self._network_cache[network_name] = network_info
+            return network_info
+
+        except Exception as e:
+            print(f"Warning: Could not load network {network_name}: {e}")
+            self._network_cache[network_name] = {}
+            return {}
 
     def create_llm_comparison_suite(
         self, multi_llm_results: Dict
@@ -464,31 +525,30 @@ class BenchmarkVisualizer:
         """Create scalability analysis figure."""
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
 
-        # Prepare scalability data
+        # Prepare scalability data using actual network information
         scalability_data = []
         for llm, llm_results in results["results_by_llm"].items():
             for result in llm_results:
                 if result["success"]:
-                    # Calculate network size (approximate)
-                    network_size = result.get("network_size", {})
-                    total_elements = sum(
-                        [
-                            network_size.get("buses", 0),
-                            network_size.get("lines", 0),
-                            network_size.get("loads", 0),
-                        ]
-                    )
+                    # Get actual network information from pandapower files
+                    network_info = self._get_network_info(result["network_name"])
+                    total_elements = network_info.get("total_elements", 0)
 
-                    scalability_data.append(
-                        {
-                            "LLM": llm.replace("-", " ").title(),
-                            "Network Size": total_elements,
-                            "Runtime": result["runtime_seconds"],
-                            "Iterations": result["total_iterations"],
-                            "Actions": result["total_actions"],
-                            "Network Name": result["network_name"],
-                        }
-                    )
+                    # Only include if we have valid network size data
+                    if total_elements > 0:
+                        scalability_data.append(
+                            {
+                                "LLM": llm.replace("-", " ").title(),
+                                "Network Size": total_elements,
+                                "Buses": network_info.get("buses", 0),
+                                "Lines": network_info.get("lines", 0),
+                                "Loads": network_info.get("loads", 0),
+                                "Runtime": result["runtime_seconds"],
+                                "Iterations": result["total_iterations"],
+                                "Actions": result["total_actions"],
+                                "Network Name": result["network_name"],
+                            }
+                        )
 
         if not scalability_data:
             # Create empty plots with message
