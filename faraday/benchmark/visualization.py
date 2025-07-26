@@ -44,16 +44,12 @@ class BenchmarkVisualizer:
 
         # Color schemes for different chart types
         self.llm_colors = {
-            "GPT-4o": "#1f77b4",
-            "GPT-4 Turbo": "#ff7f0e",
-            "GPT-3.5 Turbo": "#2ca02c",
-            "Claude 3.5 Sonnet": "#d62728",
-            "Claude 3 Opus": "#9467bd",
-            "Claude 3 Haiku": "#8c564b",
-            "Gemini 1.5 Pro": "#e377c2",
-            "Gemini 1.5 Flash": "#7f7f7f",
-            "Qwen 32B": "#bcbd22",
-            "Llama 3.1 70B": "#17becf",
+            "gpt-4.1": "#1f77b4",
+            "gpt-4.1-mini": "#ff7f0e",
+            "claude-sonnet-4": "#9467bd",
+            "claude-3-7-sonnet": "#8c564b",
+            "gemini-2.5-pro": "#e377c2",
+            "gemini-2.5-flash": "#7f7f7f",
         }
 
     def create_llm_comparison_suite(
@@ -583,21 +579,38 @@ class BenchmarkVisualizer:
         for llm in scale_df["LLM"].unique():
             llm_data = scale_df[scale_df["LLM"] == llm]
             if len(llm_data) > 2:
-                # Fit polynomial trend line
-                z = np.polyfit(llm_data["Network Size"], llm_data["Runtime"], 1)
-                p = np.poly1d(z)
+                try:
+                    # Check for sufficient data variation
+                    network_sizes = llm_data["Network Size"]
+                    runtimes = llm_data["Runtime"]
 
-                x_trend = np.linspace(
-                    llm_data["Network Size"].min(), llm_data["Network Size"].max(), 100
-                )
-                ax4.plot(
-                    x_trend,
-                    p(x_trend),
-                    "--",
-                    color=self.llm_colors.get(llm, "#333333"),
-                    label=f"{llm} trend",
-                    alpha=0.8,
-                )
+                    # Skip if all network sizes or runtimes are the same
+                    if network_sizes.nunique() < 2 or runtimes.nunique() < 2:
+                        continue
+
+                    # Skip if there are NaN or infinite values
+                    if network_sizes.isna().any() or runtimes.isna().any():
+                        continue
+                    if np.isinf(network_sizes).any() or np.isinf(runtimes).any():
+                        continue
+
+                    # Fit polynomial trend line with error handling
+                    z = np.polyfit(network_sizes, runtimes, 1)
+                    p = np.poly1d(z)
+
+                    x_trend = np.linspace(network_sizes.min(), network_sizes.max(), 100)
+                    ax4.plot(
+                        x_trend,
+                        p(x_trend),
+                        "--",
+                        color=self.llm_colors.get(llm, "#333333"),
+                        label=f"{llm} trend",
+                        alpha=0.8,
+                    )
+                except (np.linalg.LinAlgError, ValueError, RuntimeWarning) as e:
+                    # Skip this LLM if polynomial fitting fails
+                    print(f"Warning: Could not fit trend line for {llm}: {e}")
+                    continue
 
         ax4.set_title("Runtime Scalability Trends", fontweight="bold")
         ax4.set_xlabel("Network Size")
