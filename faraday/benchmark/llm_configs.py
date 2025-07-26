@@ -145,7 +145,7 @@ LLM_TEST_SUITES = {
     ],
     "cost_effective": ["gemini-2.5-flash", "gpt-4.1-mini", "claude-3-7-sonnet"],
     "high_performance": ["gemini-2.5-pro", "gpt-4.1", "claude-sonnet-4"],
-    "quick_test": ["gemini-2.5-flash"],
+    "quick_test": ["claude-3-7-sonnet"],
 }
 
 

@@ -815,31 +815,368 @@ class BenchmarkVisualizer:
 
     def _create_network_category_performance(self, results: Dict) -> plt.Figure:
         """Create network category performance analysis."""
-        # Implementation similar to above methods
-        fig, ax = plt.subplots(figsize=(12, 8))
-        ax.text(
-            0.5,
-            0.5,
-            "Network Category Performance Analysis\n(Implementation available)",
-            ha="center",
-            va="center",
-            transform=ax.transAxes,
-            fontsize=14,
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+
+        # Categorize networks by type and complexity
+        network_categories = {
+            "case30": ["case30_light", "case30_medium"],
+            "ieee69": [
+                "ieee69_drop_1_line",
+                "ieee69_1_large_loads",
+                "ieee69_2_medium_loads",
+            ],
+            "cigre_mv": [
+                "cigre_mv_1_large_load",
+                "cigre_mv_2_small_loads",
+                "cigre_mv_drop_1_line",
+            ],
+        }
+
+        # Collect performance data by network category
+        category_data = []
+        network_performance = {}
+
+        for llm, llm_results in results["results_by_llm"].items():
+            for result in llm_results:
+                network_name = result["network_name"]
+
+                # Find category
+                category = "other"
+                for cat, networks in network_categories.items():
+                    if network_name in networks:
+                        category = cat
+                        break
+
+                if category not in network_performance:
+                    network_performance[category] = {}
+                if llm not in network_performance[category]:
+                    network_performance[category][llm] = []
+
+                network_performance[category][llm].append(
+                    {
+                        "success": result["success"],
+                        "runtime": result["runtime_seconds"],
+                        "actions": result["total_actions"],
+                        "efficiency": result["action_efficiency"],
+                        "resolution_rate": result["violation_resolution_rate"],
+                    }
+                )
+
+                if result["success"]:
+                    # Get network info for additional analysis
+                    network_info = self._get_network_info(network_name)
+
+                    category_data.append(
+                        {
+                            "LLM": llm.replace("-", " ").title(),
+                            "Category": category,
+                            "Network": network_name,
+                            "Success Rate": 1.0,
+                            "Runtime": result["runtime_seconds"],
+                            "Actions": result["total_actions"],
+                            "Efficiency": result["action_efficiency"],
+                            "Network Size": network_info.get("total_elements", 0),
+                        }
+                    )
+
+        # 1. Success Rate by Network Category
+        if category_data:
+            cat_df = pd.DataFrame(category_data)
+
+            # Calculate success rates by category and LLM
+            success_summary = []
+            for category in network_categories.keys():
+                for llm, data in network_performance.get(category, {}).items():
+                    if data:
+                        success_rate = sum(1 for r in data if r["success"]) / len(data)
+                        success_summary.append(
+                            {
+                                "Category": category,
+                                "LLM": llm.replace("-", " ").title(),
+                                "Success Rate": success_rate,
+                            }
+                        )
+
+            if success_summary:
+                success_df = pd.DataFrame(success_summary)
+                success_pivot = success_df.pivot(
+                    index="LLM", columns="Category", values="Success Rate"
+                )
+                success_pivot.fillna(0, inplace=True)
+
+                sns.heatmap(
+                    success_pivot,
+                    annot=True,
+                    fmt=".2f",
+                    cmap="RdYlGn",
+                    ax=ax1,
+                    cbar_kws={"label": "Success Rate"},
+                )
+                ax1.set_title("Success Rate by Network Category", fontweight="bold")
+
+        # 2. Runtime Performance by Category
+        if category_data:
+            runtime_data = []
+            for category, llm_data in network_performance.items():
+                for llm, results_list in llm_data.items():
+                    successful_results = [r for r in results_list if r["success"]]
+                    if successful_results:
+                        avg_runtime = np.mean(
+                            [r["runtime"] for r in successful_results]
+                        )
+                        runtime_data.append(
+                            {
+                                "Category": category,
+                                "LLM": llm.replace("-", " ").title(),
+                                "Avg Runtime": avg_runtime,
+                            }
+                        )
+
+            if runtime_data:
+                runtime_df = pd.DataFrame(runtime_data)
+                runtime_pivot = runtime_df.pivot(
+                    index="LLM", columns="Category", values="Avg Runtime"
+                )
+
+                sns.heatmap(
+                    runtime_pivot,
+                    annot=True,
+                    fmt=".1f",
+                    cmap="RdYlBu_r",
+                    ax=ax2,
+                    cbar_kws={"label": "Runtime (seconds)"},
+                )
+                ax2.set_title("Average Runtime by Network Category", fontweight="bold")
+
+        # 3. Action Efficiency by Category
+        if category_data:
+            valid_data = cat_df[
+                cat_df["Network Size"] > 0
+            ]  # Only include networks with valid size data
+            if not valid_data.empty:
+                sns.boxplot(
+                    data=valid_data, x="Category", y="Efficiency", hue="LLM", ax=ax3
+                )
+                ax3.set_title(
+                    "Action Efficiency by Network Category", fontweight="bold"
+                )
+                ax3.set_ylabel("Actions per Violation Resolved")
+                ax3.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+
+        # 4. Network Complexity Analysis
+        complexity_metrics = []
+        for llm, llm_results in results["results_by_llm"].items():
+            for result in llm_results:
+                if result["success"]:
+                    network_info = self._get_network_info(result["network_name"])
+                    network_size = network_info.get("total_elements", 0)
+
+                    if network_size > 0:
+                        complexity_metrics.append(
+                            {
+                                "LLM": llm.replace("-", " ").title(),
+                                "Network": result["network_name"],
+                                "Network Size": network_size,
+                                "Runtime": result["runtime_seconds"],
+                                "Actions": result["total_actions"],
+                            }
+                        )
+
+        if complexity_metrics:
+            comp_df = pd.DataFrame(complexity_metrics)
+
+            # Scatter plot of network size vs runtime
+            for llm in comp_df["LLM"].unique():
+                llm_data = comp_df[comp_df["LLM"] == llm]
+                ax4.scatter(
+                    llm_data["Network Size"],
+                    llm_data["Runtime"],
+                    label=llm,
+                    alpha=0.7,
+                    s=60,
+                    color=self.llm_colors.get(llm.lower().replace(" ", "-"), "#333333"),
+                )
+
+            ax4.set_title("Runtime vs Network Size", fontweight="bold")
+            ax4.set_xlabel("Network Elements (Buses + Lines + Loads)")
+            ax4.set_ylabel("Runtime (seconds)")
+            ax4.legend()
+            ax4.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        plt.suptitle(
+            "Network Category Performance Analysis",
+            fontsize=16,
+            fontweight="bold",
+            y=1.02,
         )
         return fig
 
     def _create_significance_heatmap(self, results: Dict) -> plt.Figure:
         """Create statistical significance heatmap."""
-        # Implementation for statistical significance visualization
-        fig, ax = plt.subplots(figsize=(10, 8))
-        ax.text(
-            0.5,
-            0.5,
-            "Statistical Significance Heatmap\n(Implementation available)",
-            ha="center",
-            va="center",
-            transform=ax.transAxes,
-            fontsize=14,
+        from scipy import stats
+
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+
+        # Prepare data for statistical analysis
+        llm_performance_data = {}
+
+        for llm, llm_results in results["results_by_llm"].items():
+            llm_performance_data[llm] = {
+                "success_rates": [],
+                "runtimes": [],
+                "actions": [],
+                "efficiencies": [],
+            }
+
+            # Group by network to get per-network performance
+            network_groups = {}
+            for result in llm_results:
+                network = result["network_name"]
+                if network not in network_groups:
+                    network_groups[network] = []
+                network_groups[network].append(result)
+
+            # Calculate metrics per network
+            for network, network_results in network_groups.items():
+                success_rate = sum(1 for r in network_results if r["success"]) / len(
+                    network_results
+                )
+                llm_performance_data[llm]["success_rates"].append(success_rate)
+
+                successful_results = [r for r in network_results if r["success"]]
+                if successful_results:
+                    avg_runtime = np.mean(
+                        [r["runtime_seconds"] for r in successful_results]
+                    )
+                    avg_actions = np.mean(
+                        [r["total_actions"] for r in successful_results]
+                    )
+                    avg_efficiency = np.mean(
+                        [r["action_efficiency"] for r in successful_results]
+                    )
+
+                    llm_performance_data[llm]["runtimes"].append(avg_runtime)
+                    llm_performance_data[llm]["actions"].append(avg_actions)
+                    llm_performance_data[llm]["efficiencies"].append(avg_efficiency)
+
+        # Create significance matrices for different metrics
+        llms = list(llm_performance_data.keys())
+        metrics = ["success_rates", "runtimes", "actions", "efficiencies"]
+        metric_names = ["Success Rate", "Runtime", "Actions", "Efficiency"]
+
+        for i, (metric, metric_name) in enumerate(zip(metrics, metric_names)):
+            ax = [ax1, ax2, ax3, ax4][i]
+
+            # Create p-value matrix
+            n_llms = len(llms)
+            p_values = np.ones((n_llms, n_llms))
+
+            for j, llm1 in enumerate(llms):
+                for k, llm2 in enumerate(llms):
+                    if (
+                        j != k
+                        and len(llm_performance_data[llm1][metric]) > 1
+                        and len(llm_performance_data[llm2][metric]) > 1
+                    ):
+                        try:
+                            # Perform Mann-Whitney U test (non-parametric)
+                            data1 = llm_performance_data[llm1][metric]
+                            data2 = llm_performance_data[llm2][metric]
+
+                            if len(data1) > 0 and len(data2) > 0:
+                                stat, p_val = stats.mannwhitneyu(
+                                    data1, data2, alternative="two-sided"
+                                )
+                                p_values[j, k] = p_val
+                        except (ValueError, RuntimeWarning):
+                            p_values[j, k] = 1.0  # No significance if test fails
+
+            # Convert p-values to significance levels
+            significance_matrix = np.zeros_like(p_values)
+            significance_matrix[p_values < 0.001] = 3  # ***
+            significance_matrix[(p_values >= 0.001) & (p_values < 0.01)] = 2  # **
+            significance_matrix[(p_values >= 0.01) & (p_values < 0.05)] = 1  # *
+            significance_matrix[p_values >= 0.05] = 0  # not significant
+
+            # Create heatmap
+            llm_display_names = [llm.replace("-", " ").title() for llm in llms]
+
+            # Create custom colormap for significance levels
+            colors = [
+                "#f0f0f0",
+                "#ffeda0",
+                "#feb24c",
+                "#f03b20",
+            ]  # white, light yellow, orange, red
+            from matplotlib.colors import ListedColormap
+
+            cmap = ListedColormap(colors)
+
+            ax.imshow(significance_matrix, cmap=cmap, vmin=0, vmax=3)
+
+            # Add significance symbols
+            for j in range(n_llms):
+                for k in range(n_llms):
+                    if j != k:
+                        sig_level = significance_matrix[j, k]
+                        if sig_level == 3:
+                            text = "***"
+                        elif sig_level == 2:
+                            text = "**"
+                        elif sig_level == 1:
+                            text = "*"
+                        else:
+                            text = "n.s."
+
+                        # Add p-value text
+                        p_val_text = (
+                            f"p={p_values[j, k]:.3f}"
+                            if p_values[j, k] < 0.999
+                            else "p>0.05"
+                        )
+                        ax.text(
+                            k,
+                            j,
+                            f"{text}\n{p_val_text}",
+                            ha="center",
+                            va="center",
+                            fontsize=8,
+                            color="black" if sig_level < 2 else "white",
+                        )
+
+            ax.set_xticks(range(n_llms))
+            ax.set_yticks(range(n_llms))
+            ax.set_xticklabels(llm_display_names, rotation=45, ha="right")
+            ax.set_yticklabels(llm_display_names)
+            ax.set_title(f"{metric_name} Significance", fontweight="bold")
+
+            # Add diagonal line (self-comparison)
+            for j in range(n_llms):
+                ax.text(
+                    j, j, "-", ha="center", va="center", fontsize=12, fontweight="bold"
+                )
+
+        # Add legend
+        from matplotlib.patches import Patch
+
+        legend_elements = [
+            Patch(facecolor="#f0f0f0", label="Not significant (p ≥ 0.05)"),
+            Patch(facecolor="#ffeda0", label="* (p < 0.05)"),
+            Patch(facecolor="#feb24c", label="** (p < 0.01)"),
+            Patch(facecolor="#f03b20", label="*** (p < 0.001)"),
+        ]
+        fig.legend(
+            handles=legend_elements, loc="center", bbox_to_anchor=(0.5, 0.02), ncol=4
+        )
+
+        plt.tight_layout()
+        plt.subplots_adjust(bottom=0.15)  # Make room for legend
+        plt.suptitle(
+            "Statistical Significance Analysis (Mann-Whitney U Test)",
+            fontsize=16,
+            fontweight="bold",
+            y=0.95,
         )
         return fig
 
@@ -884,9 +1221,7 @@ def create_sample_figures():
     visualizer = BenchmarkVisualizer()
 
     # Look for recent benchmark results
-    results_dir = Path(
-        "/Users/claude/Dev/EnergiQ-Agent/faraday/benchmark/benchmark_results/multi_llm"
-    )
+    results_dir = Path("benchmark_results/multi_llm")
     if results_dir.exists():
         result_files = list(results_dir.glob("multi_llm_benchmark_*.json"))
         if result_files:
