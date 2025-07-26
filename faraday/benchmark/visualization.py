@@ -811,7 +811,9 @@ def create_sample_figures():
     visualizer = BenchmarkVisualizer()
 
     # Look for recent benchmark results
-    results_dir = Path("benchmark_results/multi_llm")
+    results_dir = Path(
+        "/Users/claude/Dev/EnergiQ-Agent/faraday/benchmark/benchmark_results/multi_llm"
+    )
     if results_dir.exists():
         result_files = list(results_dir.glob("multi_llm_benchmark_*.json"))
         if result_files:

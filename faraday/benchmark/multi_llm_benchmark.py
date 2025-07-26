@@ -298,7 +298,7 @@ class MultiLLMBenchmark:
             response_times = []
 
             # Custom monitoring could be added here to track LLM calls
-            final_state = graph.invoke(state)
+            final_state = State(**graph.invoke(state))
 
             # Get final violations
             final_network = read_network(final_state.editing_network_file_path)
@@ -355,7 +355,7 @@ class MultiLLMBenchmark:
                 coordination_score=avg_coordination,
                 action_types_used=action_types,
                 iteration_breakdown=[
-                    asdict(ir) for ir in final_state.iteration_results
+                    ir.model_dump() for ir in final_state.iteration_results
                 ],
             )
 
@@ -664,8 +664,9 @@ def run_multi_llm_benchmark():
 
     # Run comprehensive comparison
     results = benchmark.run_comprehensive_llm_comparison(
-        test_suite="comprehensive",
-        max_iterations=10,
+        test_suite="quick_test",
+        test_networks_dir=Path("/Users/claude/Dev/EnergiQ-Agent/data/test_networks"),
+        max_iterations=5,
         trials_per_combination=2,  # Reduced for demo
     )
 
