@@ -8,7 +8,7 @@ from faraday import WORKSPACE
 from faraday.agents.prompts import EXPLAINER_PROMPT, PLANNER_PROMPT
 from faraday.agents.workflow.state import State
 from faraday.tools.pandapower import read_network, get_network_status
-from ..config import llm
+from ..config import get_llm
 
 
 def explainer(state: State) -> State:
@@ -28,7 +28,7 @@ def explainer(state: State) -> State:
             action_report=action_report,
             violation_after_action=state.iteration_results[-1].viola_after.model_dump(),
         )
-        explanation = llm.invoke(explanation_prompt).content
+        explanation = get_llm().invoke(explanation_prompt).content
         state.explanation = explanation
 
     # --- Enhanced Data Collection for Fine-tuning ---

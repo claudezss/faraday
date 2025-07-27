@@ -8,7 +8,7 @@ from faraday.tools.pandapower import (
     get_violations,
     get_json_network_status,
 )
-from faraday.agents.workflow.config import llm
+from faraday.agents.workflow.config import get_llm
 from faraday.tools.pandapower import read_network
 from faraday.tools.pandapower import (
     update_switch_status,
@@ -26,6 +26,28 @@ TOOL_MAPPING = {
     "add_battery": add_battery,
     "update_switch_status": update_switch_status,
 }
+
+
+def calculate_action_effectiveness(violations_before, violations_after, action):
+    """Calculate how effective an action was at reducing violations."""
+    before_count = (
+        len(violations_before.voltage)
+        + len(violations_before.thermal)
+        + len(violations_before.disconnected_buses)
+    )
+    after_count = (
+        len(violations_after.voltage)
+        + len(violations_after.thermal)
+        + len(violations_after.disconnected_buses)
+    )
+
+    return {
+        "action": action,
+        "violations_reduced": before_count - after_count,
+        "effectiveness_score": (before_count - after_count) / max(before_count, 1),
+        "before_count": before_count,
+        "after_count": after_count,
+    }
 
 
 def planner(state: State) -> State:
@@ -51,7 +73,7 @@ def planner(state: State) -> State:
             },
         ]
 
-    agent = llm.bind_tools(list(TOOL_MAPPING.values()))
+    agent = get_llm().bind_tools(list(TOOL_MAPPING.values()))
 
     ai_message = agent.invoke(state.messages)
 
@@ -71,6 +93,15 @@ def planner(state: State) -> State:
             try:
                 tool_function(**arguments)
                 executed_actions.append(tool_call)
+
+                # Check if violations are resolved after each action
+                current_violations = get_violations(
+                    read_network(state.editing_network_file_path)
+                )
+                if current_violations.is_resolved:
+                    logger.info("All violations resolved, stopping execution early")
+                    break
+
             except Exception as e:
                 print(f"Error executing tool {tool_name}: {e}")
         else:
@@ -90,7 +121,7 @@ def planner(state: State) -> State:
 
     state.iteration_results.append(iter_results)
 
-    if len(violas.thermal) == 0 and len(violas.voltage) == 0:
+    if violas.is_resolved:
         state.messages += [
             {
                 "role": "user",
