@@ -48,6 +48,12 @@ class LLMConfigManager:
                 model="gpt-4.1-mini",
                 api_key_env="OPENAI_API_KEY",
             ),
+            "gpt-4.1-nano": LLMConfig(
+                name="gpt-4.1-nano",
+                provider="openai",
+                model="gpt-4.1-nano",
+                api_key_env="OPENAI_API_KEY",
+            ),
             "gemini-2.5-pro": LLMConfig(
                 name="gemini-2.5-pro",
                 provider="openai",
@@ -88,6 +94,13 @@ class LLMConfigManager:
                 provider="anthropic",
                 model="claude-3-7-sonnet-latest",
                 api_key_env="ANTHROPIC_API_KEY",
+            ),
+            "qwen3": LLMConfig(
+                name="qwen3",
+                provider="openai",
+                model="qwen-max",
+                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                api_key_env="QWEN_API_KEY",
             ),
         }
 
@@ -152,12 +165,13 @@ LLM_TEST_SUITES = {
     "comprehensive": [
         "gemini-2.5-pro",
         "gemini-2.5-flash",
-        "gpt-4.1",
+        # "gpt-4.1",
         "gpt-4.1-mini",
+        "gpt-4.1-nano",
         # "claude-sonnet-4",
-        "claude-3-7-sonnet",
-        "grok-4",
-        "grok-3",
+        # "claude-3-7-sonnet",
+        # "grok-4",
+        # "grok-3",
     ],
     "cost_effective": [
         "gemini-2.5-flash",
@@ -171,7 +185,7 @@ LLM_TEST_SUITES = {
         # "claude-sonnet-4",
         "grok-4",
     ],
-    "quick_test": ["grok-3"],
+    "quick_test": ["qwen3"],
 }
 
 
