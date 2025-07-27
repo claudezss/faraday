@@ -62,6 +62,20 @@ class LLMConfigManager:
                 api_key_env="GEMINI_API_KEY",
                 base_url="https://generativelanguage.googleapis.com/v1beta/openai",
             ),
+            "grok-4": LLMConfig(
+                name="grok-4",
+                provider="openai",
+                model="grok-4-0709",
+                api_key_env="GORK_API_KEY",
+                base_url="https://api.x.ai/v1",
+            ),
+            "grok-3": LLMConfig(
+                name="grok-3",
+                provider="openai",
+                model="grok-3",
+                api_key_env="GORK_API_KEY",
+                base_url="https://api.x.ai/v1",
+            ),
             # Anthropic Claude Models
             "claude-sonnet-4": LLMConfig(
                 name="claude-sonnet-4",
@@ -95,7 +109,7 @@ class LLMConfigManager:
         if config.provider == "openai":
             return ChatOpenAI(
                 model=config.model,
-                # temperature=config.temperature,
+                base_url=config.base_url,
                 api_key=api_key,
             )
 
@@ -140,12 +154,24 @@ LLM_TEST_SUITES = {
         "gemini-2.5-flash",
         "gpt-4.1",
         "gpt-4.1-mini",
-        "claude-sonnet-4",
+        # "claude-sonnet-4",
         "claude-3-7-sonnet",
+        "grok-4",
+        "grok-3",
     ],
-    "cost_effective": ["gemini-2.5-flash", "gpt-4.1-mini", "claude-3-7-sonnet"],
-    "high_performance": ["gemini-2.5-pro", "gpt-4.1", "claude-sonnet-4"],
-    "quick_test": ["claude-3-7-sonnet"],
+    "cost_effective": [
+        "gemini-2.5-flash",
+        "gpt-4.1-mini",
+        "claude-3-7-sonnet",
+        "grok-3",
+    ],
+    "high_performance": [
+        "gemini-2.5-pro",
+        "gpt-4.1",
+        # "claude-sonnet-4",
+        "grok-4",
+    ],
+    "quick_test": ["grok-3"],
 }
 
 

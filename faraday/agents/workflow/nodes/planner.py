@@ -8,7 +8,7 @@ from faraday.tools.pandapower import (
     get_violations,
     get_json_network_status,
 )
-from faraday.agents.workflow.config import llm
+from faraday.agents.workflow.config import get_llm
 from faraday.tools.pandapower import read_network
 from faraday.tools.pandapower import (
     update_switch_status,
@@ -73,7 +73,7 @@ def planner(state: State) -> State:
             },
         ]
 
-    agent = llm.bind_tools(list(TOOL_MAPPING.values()))
+    agent = get_llm().bind_tools(list(TOOL_MAPPING.values()))
 
     ai_message = agent.invoke(state.messages)
 

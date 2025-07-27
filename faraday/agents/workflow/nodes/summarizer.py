@@ -4,7 +4,7 @@ Summarizer node for generating summaries of executed actions.
 
 from faraday.agents.prompts import SUMMARIZER_PROMPT
 from faraday.agents.workflow.state import State
-from ..config import llm
+from ..config import get_llm
 
 
 def summarizer(state: State) -> State:
@@ -17,7 +17,7 @@ def summarizer(state: State) -> State:
             [f"- {action['name']}({action['args']})" for action in executed_actions]
         )
         summary_prompt = SUMMARIZER_PROMPT.format(action_report=action_report)
-        summary = llm.invoke(summary_prompt).content
+        summary = get_llm().invoke(summary_prompt).content
 
     state.summary = summary
 

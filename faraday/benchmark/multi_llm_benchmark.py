@@ -272,11 +272,10 @@ class MultiLLMBenchmark:
         start_time = time.time()
 
         try:
-            # Temporarily replace the global LLM instance
-            from faraday.agents.workflow import config
+            # Set the LLM instance using the new config system
+            from faraday.agents.workflow.config import set_llm
 
-            original_llm = config.llm
-            config.llm = llm_instance
+            set_llm(llm_instance)
 
             # Setup state
             state = State(
@@ -334,8 +333,10 @@ class MultiLLMBenchmark:
                 np.mean(coordination_scores) if coordination_scores else 0.0
             )
 
-            # Restore original LLM
-            config.llm = original_llm
+            # Reset to default LLM
+            from faraday.agents.workflow.config import reset_llm
+
+            reset_llm()
 
             return LLMBenchmarkResult(
                 llm_name=self.llm_manager.configs[llm_config].name,
@@ -360,11 +361,11 @@ class MultiLLMBenchmark:
             )
 
         except Exception as e:
-            # Restore original LLM in case of error
-            from faraday.agents.workflow import config
+            # Reset to default LLM in case of error
+            from faraday.agents.workflow.config import reset_llm
 
             try:
-                config.llm = original_llm
+                reset_llm()
             except Exception:
                 pass
 
