@@ -68,6 +68,13 @@ class LLMConfigManager:
                 api_key_env="GEMINI_API_KEY",
                 base_url="https://generativelanguage.googleapis.com/v1beta/openai",
             ),
+            "gemini-2.5-flash-lite": LLMConfig(
+                name="gemini-2.5-flash-lite",
+                provider="openai",
+                model="gemini-2.5-flash-lite",
+                api_key_env="GEMINI_API_KEY",
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+            ),
             "grok-4": LLMConfig(
                 name="grok-4",
                 provider="openai",
@@ -163,13 +170,14 @@ class LLMConfigManager:
 # Predefined test suites for different research scenarios
 LLM_TEST_SUITES = {
     "comprehensive": [
-        "gemini-2.5-pro",
+        # "gemini-2.5-pro",
         "gemini-2.5-flash",
-        # "gpt-4.1",
+        "gemini-2.5-flash-lite",
+        "gpt-4.1",
         "gpt-4.1-mini",
         "gpt-4.1-nano",
-        # "claude-sonnet-4",
-        # "claude-3-7-sonnet",
+        "claude-sonnet-4",
+        "claude-3-7-sonnet",
         # "grok-4",
         # "grok-3",
     ],

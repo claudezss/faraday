@@ -18,6 +18,7 @@ from faraday.benchmark.llm_configs import LLMConfigManager, get_test_suite
 from faraday.agents.workflow.state import State
 from faraday.agents.workflow.graph import get_workflow
 from faraday.tools.pandapower import get_violations, read_network
+from time import sleep
 
 
 logger = logging.getLogger(__name__)
@@ -157,6 +158,8 @@ class MultiLLMBenchmark:
             )
             logger.info(f"  Avg Runtime: {avg_runtime:.2f}s")
 
+            sleep(75)
+
         # Perform comparative analysis
         llm_rankings = self._calculate_llm_rankings(results_by_llm)
         statistical_significance = self._calculate_statistical_significance(
@@ -236,6 +239,8 @@ class MultiLLMBenchmark:
                         )
                     else:
                         logger.info(f"    ❌ Failed: {result.failure_reason}")
+
+                    sleep(75)
 
         except Exception as e:
             logger.error(f"Failed to test LLM {llm_config}: {e}")
@@ -668,7 +673,7 @@ def run_multi_llm_benchmark():
         test_suite="comprehensive",
         test_networks_dir=Path("/Users/claude/Dev/EnergiQ-Agent/data/test_networks"),
         max_iterations=5,
-        trials_per_combination=1,
+        trials_per_combination=2,
     )
 
     return results
