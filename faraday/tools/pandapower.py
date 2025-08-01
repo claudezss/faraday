@@ -463,13 +463,13 @@ def get_electrical_distance(net: pp.pandapowerNet, from_bus: int, to_bus: int) -
 
 def get_hierarchical_network_status(net: pp.pandapowerNet) -> dict[str, Any]:
     """
-    Get hierarchical network status for large networks.
+    Get hierarchical network status for large networks with full network state.
 
     Args:
         net: pandapower network object
 
     Returns:
-        Hierarchical network representation
+        Hierarchical network representation with complete zone information
     """
     # Network overview
     total_buses = len(net.bus)
@@ -523,11 +523,12 @@ def get_hierarchical_network_status(net: pp.pandapowerNet) -> dict[str, Any]:
                 }
             )
 
-    # Get zones with violations
+    # Get zones and create full hierarchical structure
     zones = get_electrical_zones(net)
-    violation_zones = {}
+    zone_details = {}
 
     for zone_id, bus_list in zones.items():
+        # Get zone violations
         zone_violations = [v for v in voltage_violations if v["bus"] in bus_list]
         zone_thermal = [
             t
@@ -535,39 +536,150 @@ def get_hierarchical_network_status(net: pp.pandapowerNet) -> dict[str, Any]:
             if t["from_bus"] in bus_list or t["to_bus"] in bus_list
         ]
 
-        if zone_violations or zone_thermal:
-            # Find controllable resources in this zone
-            controllable_loads = []
-            for _, load in net.load.iterrows():
-                if load["bus"] in bus_list and load.get("curtailable", False):
-                    controllable_loads.append(
-                        {
-                            "name": load["name"],
-                            "bus": int(load["bus"]),
-                            "p_mw": round(float(load["p_mw"]), 3),
-                        }
-                    )
+        # Get all buses in zone with their status
+        zone_buses = []
+        for bus_idx in bus_list:
+            if bus_idx in net.bus.index:
+                bus_row = net.bus.loc[bus_idx]
+                v_mag = (
+                    net.res_bus.loc[bus_idx, "vm_pu"]
+                    if bus_idx in net.res_bus.index
+                    else 0.0
+                )
+                zone_buses.append(
+                    {
+                        "idx": int(bus_idx),
+                        "name": bus_row["name"],
+                        "v_mag_pu": round(float(v_mag), 3),
+                        "voltage_violation": v_mag > thresholds.v_max
+                        or v_mag < thresholds.v_min,
+                        "vn_kv": float(bus_row["vn_kv"]),
+                    }
+                )
 
-            zone_switches = []
-            for _, switch in net.switch.iterrows():
-                if switch["bus"] in bus_list:
-                    zone_switches.append(
-                        {
-                            "name": switch["name"],
-                            "bus": int(switch["bus"]),
-                            "element": int(switch["element"]),
-                            "closed": bool(switch["closed"]),
-                        }
-                    )
+        # Get all loads in zone
+        zone_loads = []
+        for _, load in net.load.iterrows():
+            if load["bus"] in bus_list:
+                zone_loads.append(
+                    {
+                        "name": load["name"],
+                        "bus": int(load["bus"]),
+                        "p_mw": round(float(load["p_mw"]), 3),
+                        "q_mvar": round(float(load["q_mvar"]), 3),
+                        "curtailable": bool(load.get("curtailable", False)),
+                        "in_service": bool(load["in_service"]),
+                    }
+                )
 
-            violation_zones[f"zone_{zone_id}"] = {
-                "buses": bus_list,
-                "voltage_violations": zone_violations,
-                "thermal_violations": zone_thermal,
-                "controllable_loads": controllable_loads,
-                "switches": zone_switches,
-                "total_buses": len(bus_list),
-            }
+        # Get all generators in zone
+        zone_generators = []
+        for _, gen in net.sgen.iterrows():
+            if gen["bus"] in bus_list:
+                zone_generators.append(
+                    {
+                        "name": gen["name"],
+                        "bus": int(gen["bus"]),
+                        "p_mw": round(float(gen["p_mw"]), 3),
+                        "q_mvar": round(float(gen["q_mvar"]), 3),
+                        "controllable": bool(gen.get("controllable", False)),
+                        "in_service": bool(gen["in_service"]),
+                    }
+                )
+
+        # Get all switches in zone
+        zone_switches = []
+        for _, switch in net.switch.iterrows():
+            if switch["bus"] in bus_list:
+                zone_switches.append(
+                    {
+                        "name": switch["name"],
+                        "bus": int(switch["bus"]),
+                        "element": int(switch["element"]),
+                        "closed": bool(switch["closed"]),
+                        "controllable": bool(switch.get("controllable", True)),
+                    }
+                )
+
+        # Get all lines connecting buses within the zone or to other zones
+        zone_lines = []
+        for idx, line in net.line.iterrows():
+            from_bus = int(line["from_bus"])
+            to_bus = int(line["to_bus"])
+            if from_bus in bus_list or to_bus in bus_list:
+                loading = (
+                    net.res_line.loc[idx, "loading_percent"]
+                    if idx in net.res_line.index
+                    else 0.0
+                )
+                zone_lines.append(
+                    {
+                        "name": line["name"],
+                        "from_bus": from_bus,
+                        "to_bus": to_bus,
+                        "loading_percent": round(float(loading), 3),
+                        "thermal_violation": loading > 100,
+                        "internal_connection": from_bus in bus_list
+                        and to_bus in bus_list,
+                        "in_service": bool(line["in_service"]),
+                    }
+                )
+
+        # Get all transformers in zone
+        zone_transformers = []
+        for idx, trafo in net.trafo.iterrows():
+            hv_bus = int(trafo["hv_bus"])
+            lv_bus = int(trafo["lv_bus"])
+            if hv_bus in bus_list or lv_bus in bus_list:
+                loading = (
+                    net.res_trafo.loc[idx, "loading_percent"]
+                    if idx in net.res_trafo.index
+                    else 0.0
+                )
+                zone_transformers.append(
+                    {
+                        "name": trafo["name"],
+                        "hv_bus": hv_bus,
+                        "lv_bus": lv_bus,
+                        "loading_percent": round(float(loading), 3),
+                        "thermal_violation": loading > 100,
+                        "tap_pos": int(trafo["tap_pos"]),
+                        "internal_connection": hv_bus in bus_list
+                        and lv_bus in bus_list,
+                        "in_service": bool(trafo["in_service"]),
+                    }
+                )
+
+        # Calculate zone health metrics
+        zone_health = {
+            "has_violations": len(zone_violations) > 0 or len(zone_thermal) > 0,
+            "voltage_violation_count": len(zone_violations),
+            "thermal_violation_count": len(zone_thermal),
+            "controllable_resources": {
+                "curtailable_loads": len(
+                    [load for load in zone_loads if load["curtailable"]]
+                ),
+                "controllable_generators": len(
+                    [gen for gen in zone_generators if gen["controllable"]]
+                ),
+                "switches": len(zone_switches),
+            },
+        }
+
+        zone_details[f"zone_{zone_id}"] = {
+            "zone_id": zone_id,
+            "health_metrics": zone_health,
+            "buses": zone_buses,
+            "loads": zone_loads,
+            "generators": zone_generators,
+            "lines": zone_lines,
+            "transformers": zone_transformers,
+            "switches": zone_switches,
+            "voltage_violations": zone_violations,
+            "thermal_violations": zone_thermal,
+            "total_buses": len(zone_buses),
+            "voltage_level_kv": list(set(bus["vn_kv"] for bus in zone_buses)),
+        }
 
     return {
         "network_overview": {
@@ -577,14 +689,33 @@ def get_hierarchical_network_status(net: pp.pandapowerNet) -> dict[str, Any]:
             "total_generators": total_generators,
             "total_voltage_violations": len(voltage_violations),
             "total_thermal_violations": len(thermal_violations),
-            "violation_zones": list(violation_zones.keys()),
-            "healthy_zones": [
-                f"zone_{zid}"
-                for zid in zones.keys()
-                if f"zone_{zid}" not in violation_zones
-            ],
+            "total_zones": len(zones),
+            "zones_with_violations": len(
+                [
+                    z
+                    for z in zone_details.values()
+                    if z["health_metrics"]["has_violations"]
+                ]
+            ),
+            "healthy_zones": len(
+                [
+                    z
+                    for z in zone_details.values()
+                    if not z["health_metrics"]["has_violations"]
+                ]
+            ),
+            "overall_power_balance": sum(
+                gen["p_mw"] for _, gen in net.sgen.iterrows() if gen["in_service"]
+            )
+            - sum(
+                load["p_mw"] for _, load in net.load.iterrows() if load["in_service"]
+            ),
         },
-        "violation_details": violation_zones,
+        "zone_details": zone_details,
+        "global_violations": {
+            "voltage_violations": voltage_violations,
+            "thermal_violations": thermal_violations,
+        },
     }
 
 

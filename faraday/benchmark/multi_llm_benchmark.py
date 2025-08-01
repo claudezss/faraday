@@ -670,7 +670,7 @@ def run_multi_llm_benchmark():
 
     # Run comprehensive comparison
     results = benchmark.run_comprehensive_llm_comparison(
-        test_suite="comprehensive",
+        test_suite="quick_test",
         test_networks_dir=Path("/Users/claude/Dev/EnergiQ-Agent/data/test_networks"),
         max_iterations=5,
         trials_per_combination=2,

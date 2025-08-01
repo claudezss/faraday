@@ -193,7 +193,7 @@ LLM_TEST_SUITES = {
         # "claude-sonnet-4",
         "grok-4",
     ],
-    "quick_test": ["qwen3"],
+    "quick_test": ["claude-3-7-sonnet"],
 }
 
 
