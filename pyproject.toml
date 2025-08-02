@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "google-genai>=1.20.0",
+    "langchain-google-genai>=2.1.8",
     "langchain[anthropic,openai]>=0.3.25",
     "langgraph>=0.4.8",
     "langgraph-cli[inmem]>=0.3.3",
@@ -13,7 +13,6 @@ dependencies = [
     "mcp[cli]>=1.9.4",
     "pandapower[all]>=3.1.2",
     "pandas-stubs",
-    "qwen-agent[code-interpreter,gui,mcp,rag]>=0.0.26",
     "rich>=13.9.4",
     "streamlit>=1.46.0",
 ]

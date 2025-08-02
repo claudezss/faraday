@@ -240,7 +240,7 @@ class MultiLLMBenchmark:
                     else:
                         logger.info(f"    ❌ Failed: {result.failure_reason}")
 
-                    sleep(75)
+                    sleep(10)
 
         except Exception as e:
             logger.error(f"Failed to test LLM {llm_config}: {e}")
@@ -671,7 +671,7 @@ def run_multi_llm_benchmark():
     # Run comprehensive comparison
     results = benchmark.run_comprehensive_llm_comparison(
         test_suite="comprehensive",
-        test_networks_dir=Path("/Users/claude/Dev/EnergiQ-Agent/data/test_networks"),
+        test_networks_dir=Path("D:\\Dev\\repo\\EnergiQ-Agent\\data\\test_networks"),
         max_iterations=5,
         trials_per_combination=2,
     )

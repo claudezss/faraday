@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import dotenv
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 
 @dataclass
@@ -56,21 +57,21 @@ class LLMConfigManager:
             ),
             "gemini-2.5-pro": LLMConfig(
                 name="gemini-2.5-pro",
-                provider="openai",
+                provider="google",
                 model="gemini-2.5-pro",
                 api_key_env="GEMINI_API_KEY",
                 base_url="https://generativelanguage.googleapis.com/v1beta/openai",
             ),
             "gemini-2.5-flash": LLMConfig(
                 name="gemini-2.5-flash",
-                provider="openai",
+                provider="google",
                 model="gemini-2.5-flash",
                 api_key_env="GEMINI_API_KEY",
                 base_url="https://generativelanguage.googleapis.com/v1beta/openai",
             ),
             "gemini-2.5-flash-lite": LLMConfig(
                 name="gemini-2.5-flash-lite",
-                provider="openai",
+                provider="google",
                 model="gemini-2.5-flash-lite",
                 api_key_env="GEMINI_API_KEY",
                 base_url="https://generativelanguage.googleapis.com/v1beta/openai",
@@ -139,6 +140,12 @@ class LLMConfigManager:
                 # temperature=config.temperature,
                 api_key=api_key,
             )
+        elif config.provider == "google":
+            return ChatGoogleGenerativeAI(
+                model=config.model,
+                api_key=api_key,
+                thinking_budget=128 if config.model == "gemini-2.5-pro" else 0,
+            )
 
         else:
             raise ValueError(f"Unsupported provider: {config.provider}")
@@ -170,30 +177,22 @@ class LLMConfigManager:
 # Predefined test suites for different research scenarios
 LLM_TEST_SUITES = {
     "comprehensive": [
-        # "gemini-2.5-pro",
+        "gemini-2.5-pro",
         "gemini-2.5-flash",
         "gemini-2.5-flash-lite",
         "gpt-4.1",
         "gpt-4.1-mini",
         "gpt-4.1-nano",
-        "claude-sonnet-4",
-        "claude-3-7-sonnet",
-        # "grok-4",
-        # "grok-3",
     ],
     "cost_effective": [
         "gemini-2.5-flash",
         "gpt-4.1-mini",
-        "claude-3-7-sonnet",
-        "grok-3",
     ],
     "high_performance": [
         "gemini-2.5-pro",
         "gpt-4.1",
-        # "claude-sonnet-4",
-        "grok-4",
     ],
-    "quick_test": ["qwen3"],
+    "quick_test": ["gemini-2.5-flash"],
 }
 
 
