@@ -795,19 +795,19 @@ def render_interactive_executing():
                 # Execute the actual action
                 if action_name == "curtail_load":
                     curtail_load(
-                        network_file_path=network_file_path,
+                        network_path=network_file_path,
                         load_name=current_action["args"]["load_name"],
                         curtail_percent=current_action["args"]["curtail_percent"],
                     )
                 elif action_name == "update_switch_status":
                     update_switch_status(
-                        network_file_path=network_file_path,
+                        network_path=network_file_path,
                         switch_name=current_action["args"]["switch_name"],
                         closed=current_action["args"]["closed"],
                     )
                 elif action_name == "add_battery":
                     add_battery(
-                        network_file_path=network_file_path,
+                        network_path=network_file_path,
                         bus_index=current_action["args"]["bus_index"],
                         max_energy_kw=current_action["args"]["max_energy_kw"],
                     )
