@@ -127,6 +127,22 @@ class ComparisonView:
 
             if initial_net is None or final_net is None:
                 st.warning("Network comparison data not available")
+                if st.checkbox(
+                    "Show debug info for network comparison", key="debug_network_comp"
+                ):
+                    st.write(f"Initial network available: {initial_net is not None}")
+                    st.write(f"Final network available: {final_net is not None}")
+                    workflow_results = SessionStateManager.get_workflow_results()
+                    if workflow_results:
+                        st.write("Workflow results available: True")
+                        st.write(
+                            f"Has org_network_copy_file_path: {hasattr(workflow_results, 'org_network_copy_file_path')}"
+                        )
+                        st.write(
+                            f"Has editing_network_file_path: {hasattr(workflow_results, 'editing_network_file_path')}"
+                        )
+                    else:
+                        st.write("Workflow results available: False")
                 return
 
             # Create side-by-side comparison
@@ -142,11 +158,23 @@ class ComparisonView:
                         initial_fig, use_container_width=True, key="initial_network"
                     )
 
-                # Initial violations summary
-                initial_violations = get_violations(initial_net)
-                self._render_violations_summary(
-                    initial_violations, "Initial Violations"
-                )
+                # Initial violations summary - ensure power flow is run first
+                try:
+                    pp.runpp(initial_net)
+                    initial_violations = get_violations(initial_net)
+                    self._render_violations_summary(
+                        initial_violations, "Initial Violations"
+                    )
+
+                    # Debug info
+                    if st.checkbox("Show violation debug info", key="debug_violations"):
+                        st.write(
+                            f"Initial violations - Voltage: {len(initial_violations.voltage)}, Thermal: {len(initial_violations.thermal)}"
+                        )
+                except Exception as e:
+                    st.error(f"Could not calculate initial violations: {e}")
+                    if st.checkbox("Show error details", key="error_details_initial"):
+                        st.exception(e)
 
             with col2:
                 st.write("**After (Final State)**")
@@ -156,9 +184,15 @@ class ComparisonView:
                         final_fig, use_container_width=True, key="final_network"
                     )
 
-                # Final violations summary
-                final_violations = get_violations(final_net)
-                self._render_violations_summary(final_violations, "Final Violations")
+                # Final violations summary - ensure power flow is run first
+                try:
+                    pp.runpp(final_net)
+                    final_violations = get_violations(final_net)
+                    self._render_violations_summary(
+                        final_violations, "Final Violations"
+                    )
+                except Exception as e:
+                    st.error(f"Could not calculate final violations: {e}")
 
         except Exception as e:
             st.error(f"Error in network comparison: {e}")

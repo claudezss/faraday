@@ -256,7 +256,26 @@ class SessionStateManager:
         if "initial_network_interactive" in st.session_state:
             return st.session_state.initial_network_interactive
 
-        # Fallback: try to load from initial file path
+        # For auto mode, get initial network from workflow results
+        results = st.session_state.get("workflow_results")
+        if results and hasattr(results, "org_network_copy_file_path"):
+            try:
+                import pandapower as pp
+
+                return pp.from_json(results.org_network_copy_file_path)
+            except Exception:
+                pass
+
+        # Try network_file_path as backup
+        if results and hasattr(results, "network_file_path"):
+            try:
+                import pandapower as pp
+
+                return pp.from_json(results.network_file_path)
+            except Exception:
+                pass
+
+        # Fallback: try to load from initial file path (interactive mode)
         if "initial_network_file_path" in st.session_state:
             try:
                 import pandapower as pp
@@ -265,7 +284,7 @@ class SessionStateManager:
             except Exception:
                 pass
 
-        # Final fallback: return current network (for auto mode compatibility)
+        # Final fallback: return current network
         return st.session_state.get("network")
 
     @staticmethod
