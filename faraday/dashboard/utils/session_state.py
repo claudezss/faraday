@@ -5,7 +5,6 @@ Centralized session state management for the dashboard.
 """
 
 import streamlit as st
-import pandas as pd
 import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -29,7 +28,6 @@ class SessionStateManager:
             st.session_state.current_mode = None
             st.session_state.current_plan = []
             st.session_state.executed_actions = []
-            st.session_state.chat_messages = []
             st.session_state.workflow_state = None
             st.session_state.workflow_results = None
             st.session_state.activity_log = []
@@ -142,32 +140,7 @@ class SessionStateManager:
             "actions_executed", f"Executed {len(actions)} actions"
         )
 
-    @staticmethod
-    def get_chat_messages() -> List[Dict[str, Any]]:
-        """Get chat messages."""
-        return st.session_state.get("chat_messages", [])
-
-    @staticmethod
-    def add_chat_message(
-        role: str, content: str, plan_df: Optional[pd.DataFrame] = None
-    ):
-        """Add a chat message."""
-        if "chat_messages" not in st.session_state:
-            st.session_state.chat_messages = []
-
-        message = {
-            "role": role,
-            "content": content,
-            "timestamp": datetime.now().strftime("%H:%M:%S"),
-            "plan_df": plan_df,
-        }
-
-        st.session_state.chat_messages.append(message)
-
-    @staticmethod
-    def clear_chat_messages():
-        """Clear chat messages."""
-        st.session_state.chat_messages = []
+    # Chat functionality removed - not implemented in current dashboard UI
 
     @staticmethod
     def get_workflow_state():
@@ -273,7 +246,6 @@ class SessionStateManager:
             "current_mode": SessionStateManager.get_current_mode(),
             "actions_in_plan": len(SessionStateManager.get_current_plan()),
             "actions_executed": len(SessionStateManager.get_executed_actions()),
-            "chat_messages": len(SessionStateManager.get_chat_messages()),
             "activities_logged": len(SessionStateManager.get_activity_log()),
         }
 
@@ -439,60 +411,6 @@ class SessionStateManager:
             "total_violations": st.session_state.get("final_total_violations", 0),
         }
 
-    @staticmethod
-    def reset_session():
-        """Reset the entire session state."""
-        for key in list(st.session_state.keys()):
-            if key.startswith("dashboard_") or key in [
-                "network",
-                "network_file_name",
-                "current_mode",
-                "current_plan",
-                "executed_actions",
-                "chat_messages",
-                "workflow_state",
-                "workflow_results",
-                "activity_log",
-                "viz_settings",
-            ]:
-                del st.session_state[key]
+    # Session reset functionality removed - not implemented in current dashboard UI
 
-        SessionStateManager.initialize()
-
-    @staticmethod
-    def export_session_state() -> Dict[str, Any]:
-        """Export session state for backup/sharing."""
-        exportable_data = {}
-
-        # Export non-sensitive data
-        for key in [
-            "current_mode",
-            "current_plan",
-            "executed_actions",
-            "chat_messages",
-            "activity_log",
-            "viz_settings",
-        ]:
-            if key in st.session_state:
-                exportable_data[key] = st.session_state[key]
-
-        exportable_data["session_info"] = SessionStateManager.get_session_info()
-        exportable_data["export_timestamp"] = datetime.now().isoformat()
-
-        return exportable_data
-
-    @staticmethod
-    def import_session_state(data: Dict[str, Any]):
-        """Import session state from backup."""
-        try:
-            for key, value in data.items():
-                if key != "export_timestamp" and key != "session_info":
-                    st.session_state[key] = value
-
-            SessionStateManager.add_activity(
-                "session_imported", "Session state imported successfully"
-            )
-
-        except Exception as e:
-            st.error(f"Error importing session state: {e}")
-            raise e
+    # Session export/import functionality removed - not implemented in current dashboard UI

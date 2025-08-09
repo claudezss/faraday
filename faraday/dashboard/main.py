@@ -1272,16 +1272,7 @@ def get_action_effectiveness(action):
     return effectiveness_map.get(action_name, 60)
 
 
-def render_network_visualization():
-    """Render network visualization when no mode is selected."""
-    if not SessionStateManager.has_network():
-        return
-
-    st.subheader("📊 Network Visualization")
-
-    # Network visualization component
-    network_viz = NetworkVisualization()
-    network_viz.render()
+# Removed unused function render_network_visualization() - functionality integrated into main content
 
 
 def render_workflow_results():
