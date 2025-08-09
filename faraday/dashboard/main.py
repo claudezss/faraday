@@ -476,8 +476,7 @@ def render_main_content():
         render_auto_mode()
     elif current_mode == "interactive":
         render_interactive_mode()
-    else:
-        render_network_visualization()
+    # No else clause needed - network visualization is now at top level
 
 
 def render_auto_mode():
@@ -513,54 +512,19 @@ def render_auto_mode():
         st.info("⏳ Workflow in progress...")
         # TODO: Add real-time progress tracking
 
-    # Always show network visualization if network is loaded
-    if SessionStateManager.has_network():
-        # Create tabs for better organization
-        if SessionStateManager.has_workflow_results():
-            # Check if workflow just completed to auto-select results tab
-            workflow_just_completed = st.session_state.get(
-                "workflow_just_completed", False
-            )
+    # Show workflow results if available
+    if SessionStateManager.has_workflow_results():
+        # Check if workflow just completed to auto-select results tab
+        workflow_just_completed = st.session_state.get("workflow_just_completed", False)
 
-            # Create tabs with conditional default selection
-            if workflow_just_completed:
-                # Auto-select Workflow Results tab after completion
-                tab1, tab2 = st.tabs(
-                    [
-                        "📊 Workflow Results",
-                        "🔍 Network Visualization",
-                    ]
-                )
+        # Reset the flag after using it
+        if workflow_just_completed:
+            st.session_state.workflow_just_completed = False
 
-                # Reset the flag after using it
-                st.session_state.workflow_just_completed = False
-
-                with tab1:
-                    render_workflow_results()
-
-                with tab2:
-                    network_viz = NetworkVisualization()
-                    network_viz.render()
-
-            else:
-                # Normal tab display
-                tab1, tab2 = st.tabs(
-                    ["🔍 Network Visualization", "📊 Workflow Results"]
-                )
-
-                with tab1:
-                    network_viz = NetworkVisualization()
-                    network_viz.render()
-
-                with tab2:
-                    render_workflow_results()
-        else:
-            # If no results yet, just show network visualization
-            network_viz = NetworkVisualization()
-            network_viz.render()
-    elif SessionStateManager.has_workflow_results():
-        # Show only results if no network is loaded
+        # Show workflow results
         render_workflow_results()
+    elif not SessionStateManager.has_network():
+        st.info("📁 Please select a network from the sidebar to begin analysis.")
 
 
 def render_interactive_mode():
@@ -602,10 +566,7 @@ def render_interactive_mode():
     elif state == "executing":
         render_interactive_executing()
 
-    # Always show network visualization
-    st.subheader("🔍 Network Visualization")
-    network_viz = NetworkVisualization()
-    network_viz.render()
+    # Network visualization is now shown at the top level
 
 
 def render_interactive_ready(violations, violations_data):
@@ -817,13 +778,45 @@ def render_interactive_executing():
 
         st.info(f"🔄 Executing: {action_name.replace('_', ' ').title()}")
 
-        # Execute the action (simplified - in real implementation would call actual tools)
+        # Execute the action using actual workflow tools
         with st.spinner(f"Applying {action_name}..."):
             try:
-                # Simulate execution
-                import time
+                # Import the actual tools
+                from faraday.tools.pandapower import (
+                    curtail_load,
+                    update_switch_status,
+                    add_battery,
+                )
 
-                time.sleep(1)  # Simulate processing time
+                # Get current network file path
+                workflow_state = SessionStateManager.get_workflow_state()
+                network_file_path = workflow_state.editing_network_file_path
+
+                # Execute the actual action
+                if action_name == "curtail_load":
+                    curtail_load(
+                        network_file_path=network_file_path,
+                        load_name=current_action["args"]["load_name"],
+                        curtail_percent=current_action["args"]["curtail_percent"],
+                    )
+                elif action_name == "update_switch_status":
+                    update_switch_status(
+                        network_file_path=network_file_path,
+                        switch_name=current_action["args"]["switch_name"],
+                        closed=current_action["args"]["closed"],
+                    )
+                elif action_name == "add_battery":
+                    add_battery(
+                        network_file_path=network_file_path,
+                        bus_index=current_action["args"]["bus_index"],
+                        max_energy_kw=current_action["args"]["max_energy_kw"],
+                    )
+
+                # Reload the updated network into session state
+                import pandapower as pp
+
+                updated_net = pp.from_json(network_file_path)
+                st.session_state.network = updated_net
 
                 # Mark as completed
                 result = {
@@ -1195,6 +1188,12 @@ def main():
     with main_content:
         # Network status overview
         render_network_status()
+
+        # Network visualization (moved above mode selection)
+        if SessionStateManager.has_network():
+            st.subheader("🔍 Network Visualization")
+            network_viz = NetworkVisualization()
+            network_viz.render()
 
         # Mode selection
         render_mode_selection()
