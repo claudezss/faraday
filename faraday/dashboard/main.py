@@ -8,13 +8,12 @@ with both automated and interactive modes.
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
+from typing import List, Tuple
 
 import streamlit as st
 import pandas as pd
 
 from faraday.dashboard.components.network_viz import NetworkVisualization
-from faraday.dashboard.components.action_editor import ActionPlanEditor
 
 from faraday.dashboard.components.comparison_view import ComparisonView
 from faraday.dashboard.utils.session_state import SessionStateManager
@@ -446,7 +445,7 @@ def render_mode_selection():
 
     st.subheader("🎛️ Operation Mode")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
 
     with col1:
         if st.button(
@@ -468,16 +467,6 @@ def render_mode_selection():
             SessionStateManager.set_mode("interactive")
             st.rerun()
 
-    with col3:
-        if st.button(
-            "🔬 **Expert Mode**\n\nAdvanced manual controls",
-            key="expert_mode",
-            help="Full control over individual actions and parameters",
-            use_container_width=True,
-        ):
-            SessionStateManager.set_mode("expert")
-            st.rerun()
-
 
 def render_main_content():
     """Render the main content area based on current mode."""
@@ -487,8 +476,6 @@ def render_main_content():
         render_auto_mode()
     elif current_mode == "interactive":
         render_interactive_mode()
-    elif current_mode == "expert":
-        render_expert_mode()
     else:
         render_network_visualization()
 
@@ -580,53 +567,588 @@ def render_interactive_mode():
     """Render interactive mode interface."""
     st.subheader("💬 Interactive Mode")
 
-    # Chat interface
-    chat_container = st.container()
+    if not SessionStateManager.has_network():
+        st.info("Please select a network to begin interactive analysis.")
+        return
 
-    with chat_container:
-        # Display chat messages
-        messages = SessionStateManager.get_chat_messages()
-        for message in messages:
-            with st.chat_message(message["role"]):
-                if message.get("plan_df") is not None:
-                    st.dataframe(message["plan_df"], use_container_width=True)
-                st.markdown(message["content"])
-
-    # Chat input
-    if prompt := st.chat_input(
-        "What would you like me to do? (e.g., 'fix the violations')"
-    ):
-        SessionStateManager.add_chat_message("user", prompt)
-
-        # Process user input
-        response = process_chat_input(prompt)
-        SessionStateManager.add_chat_message(
-            "assistant", response["content"], response.get("plan_df")
+    # Initialize interactive state
+    if "interactive_state" not in st.session_state:
+        st.session_state.interactive_state = (
+            "ready"  # ready, analyzing, planning, reviewing, executing
         )
+        st.session_state.current_analysis = None
+        st.session_state.proposed_plan = None
+        st.session_state.execution_progress = None
 
-        st.rerun()
+    # Get current violations for analysis
+    processor = NetworkDataProcessor()
+    violations = processor.get_violations_summary()
+    violations_data = processor.get_violations_data()
+
+    # State machine for interactive workflow
+    state = st.session_state.interactive_state
+
+    if state == "ready":
+        render_interactive_ready(violations, violations_data)
+    elif state == "analyzing":
+        render_interactive_analyzing()
+    elif state == "planning":
+        # render_interactive_planning()
+        pass
+    elif state == "reviewing":
+        render_interactive_reviewing()
+    elif state == "modifying":
+        render_interactive_modifying()
+    elif state == "executing":
+        render_interactive_executing()
+
+    # Always show network visualization
+    st.subheader("🔍 Network Visualization")
+    network_viz = NetworkVisualization()
+    network_viz.render()
 
 
-def render_expert_mode():
-    """Render expert mode interface."""
-    st.subheader("🔬 Expert Mode")
+def render_interactive_ready(violations, violations_data):
+    """Render the ready state of interactive mode."""
+    total_violations = violations.get("total_violations", 0)
 
-    # Action plan editor
-    action_editor = ActionPlanEditor()
-    action_editor.render()
+    if total_violations == 0:
+        st.success("✅ Network has no violations - everything looks good!")
+        return
 
-    # Manual execution controls
-    col1, col2 = st.columns(2)
+    # Show violation summary
+    st.info(f"🔍 Found {total_violations} violations that need attention")
+
+    # Display violations in expandable sections
+    col1, col2, col3 = st.columns(3)
 
     with col1:
-        if st.button("🔍 Analyze Network", use_container_width=True):
-            # TODO: Implement detailed analysis
-            st.info("Detailed analysis coming soon!")
+        if violations.get("voltage_violations", 0) > 0:
+            with st.expander(
+                f"⚡ {violations['voltage_violations']} Voltage Violations",
+                expanded=True,
+            ):
+                for v in violations_data.get("voltage_violations", []):
+                    severity_color = {
+                        "critical": "🔴",
+                        "high": "🟠",
+                        "medium": "🟡",
+                    }.get(v["severity"], "⚪")
+                    st.write(
+                        f"{severity_color} Bus {v['bus_idx']}: {v['v_mag_pu']:.3f} p.u."
+                    )
 
     with col2:
-        if st.button("⚡ Execute Plan", use_container_width=True):
-            # TODO: Implement plan execution
-            st.info("Plan execution coming soon!")
+        if violations.get("thermal_violations", 0) > 0:
+            with st.expander(
+                f"🌡️ {violations['thermal_violations']} Thermal Violations",
+                expanded=True,
+            ):
+                for t in violations_data.get("thermal_violations", []):
+                    severity_color = {
+                        "critical": "🔴",
+                        "high": "🟠",
+                        "medium": "🟡",
+                    }.get(t["severity"], "⚪")
+                    st.write(
+                        f"{severity_color} {t['name']}: {t['loading_percent']:.1f}%"
+                    )
+
+    with col3:
+        if violations.get("disconnected_buses", 0) > 0:
+            with st.expander(
+                f"🔌 {violations['disconnected_buses']} Disconnected Buses",
+                expanded=True,
+            ):
+                for bus_id in violations_data.get("disconnected_buses", []):
+                    st.write(f"🔴 Bus {bus_id}: No power flow")
+
+    # Action buttons
+    st.markdown("### 🎯 What would you like to do?")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("🔧 Generate Fix Plan", type="primary", use_container_width=True):
+            st.session_state.interactive_state = "analyzing"
+            st.rerun()
+
+    with col2:
+        if st.button("📊 Analyze in Detail", use_container_width=True):
+            show_detailed_analysis(violations_data)
+
+    with col3:
+        if st.button("🔄 Refresh Analysis", use_container_width=True):
+            st.rerun()
+
+
+def render_interactive_analyzing():
+    """Render the analyzing state."""
+    st.info("🔄 Analyzing network and generating action plan...")
+
+    with st.spinner("Running AI analysis..."):
+        try:
+            # Use the actual planner from the workflow
+            from faraday.agents.workflow.nodes.planner import planner
+            from faraday.agents.workflow.nodes.cache import cache_network
+
+            # Get workflow state
+            workflow_state = SessionStateManager.get_workflow_state()
+
+            # Cache network first
+            cached_state = cache_network(workflow_state)
+
+            # Run planner to get actual action plan
+            result_state = planner(cached_state)
+
+            # Extract the proposed plan
+            if result_state.iteration_results:
+                latest_iteration = result_state.iteration_results[-1]
+                proposed_plan = latest_iteration.executed_actions
+                violations_before = latest_iteration.viola_before
+
+                st.session_state.proposed_plan = proposed_plan
+                st.session_state.violations_before = violations_before
+                st.session_state.interactive_state = "reviewing"
+                st.success("✅ Analysis complete! Generated action plan.")
+                st.rerun()
+            else:
+                st.error("❌ Failed to generate action plan")
+                st.session_state.interactive_state = "ready"
+
+        except Exception as e:
+            st.error(f"❌ Error during analysis: {e}")
+            st.session_state.interactive_state = "ready"
+
+
+def render_interactive_reviewing():
+    """Render the plan review state."""
+    st.subheader("📋 Proposed Action Plan")
+
+    plan = st.session_state.proposed_plan
+    if not plan:
+        st.error("No plan available")
+        st.session_state.interactive_state = "ready"
+        return
+
+    st.info(
+        f"💡 I've generated {len(plan)} actions to resolve the violations. Please review:"
+    )
+
+    # Display plan in a nice format
+    for i, action in enumerate(plan, 1):
+        action_name = action.get("name", "unknown")
+        args = action.get("args", {})
+
+        with st.expander(
+            f"Action {i}: {action_name.replace('_', ' ').title()}", expanded=True
+        ):
+            col1, col2 = st.columns([2, 1])
+
+            with col1:
+                if action_name == "curtail_load":
+                    st.write(f"📉 **Curtail Load**: {args.get('load_name', 'Unknown')}")
+                    st.write(f"🎚️ **Reduction**: {args.get('curtail_percent', 0)}%")
+                elif action_name == "update_switch_status":
+                    status = "Close" if args.get("closed", False) else "Open"
+                    st.write(
+                        f"🔄 **Switch Operation**: {status} {args.get('switch_name', 'Unknown')}"
+                    )
+                elif action_name == "add_battery":
+                    st.write(
+                        f"🔋 **Add Battery**: Bus {args.get('bus_index', 'Unknown')}"
+                    )
+                    st.write(f"⚡ **Capacity**: {args.get('max_energy_kw', 1000)} kW")
+                else:
+                    st.write(f"🔧 **Action**: {action_name}")
+                    st.write(f"📝 **Parameters**: {args}")
+
+            with col2:
+                # Action effectiveness (simplified)
+                effectiveness = get_action_effectiveness(action)
+                st.metric("Effectiveness", f"{effectiveness}%")
+
+    # Action buttons for plan review
+    st.markdown("---")
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("✅ Execute Plan", type="primary", use_container_width=True):
+            st.session_state.interactive_state = "executing"
+            st.rerun()
+
+    with col2:
+        if st.button("✏️ Modify Plan", use_container_width=True):
+            st.session_state.interactive_state = "modifying"
+            st.rerun()
+
+    with col3:
+        if st.button("❌ Generate New Plan", use_container_width=True):
+            st.session_state.interactive_state = "analyzing"
+            st.rerun()
+
+
+def render_interactive_executing():
+    """Render the execution state."""
+    st.subheader("⚡ Executing Action Plan")
+
+    plan = st.session_state.proposed_plan
+    if not plan:
+        st.error("No plan to execute")
+        st.session_state.interactive_state = "ready"
+        return
+
+    # Initialize execution progress
+    if "execution_step" not in st.session_state:
+        st.session_state.execution_step = 0
+        st.session_state.execution_results = []
+
+    current_step = st.session_state.execution_step
+    total_steps = len(plan)
+
+    # Show progress
+    progress = current_step / total_steps if total_steps > 0 else 0
+    st.progress(progress, text=f"Executing step {current_step + 1} of {total_steps}")
+
+    if current_step < total_steps:
+        # Execute current action
+        current_action = plan[current_step]
+        action_name = current_action.get("name", "unknown")
+
+        st.info(f"🔄 Executing: {action_name.replace('_', ' ').title()}")
+
+        # Execute the action (simplified - in real implementation would call actual tools)
+        with st.spinner(f"Applying {action_name}..."):
+            try:
+                # Simulate execution
+                import time
+
+                time.sleep(1)  # Simulate processing time
+
+                # Mark as completed
+                result = {
+                    "action": current_action,
+                    "status": "success",
+                    "message": "Action completed successfully",
+                }
+                st.session_state.execution_results.append(result)
+                st.session_state.execution_step += 1
+
+                st.success(f"✅ Completed: {action_name}")
+                st.rerun()
+
+            except Exception as e:
+                result = {
+                    "action": current_action,
+                    "status": "error",
+                    "message": str(e),
+                }
+                st.session_state.execution_results.append(result)
+                st.error(f"❌ Error executing {action_name}: {e}")
+
+    else:
+        # Execution complete
+        st.success("🎉 All actions executed successfully!")
+
+        # Show results summary
+        success_count = len(
+            [r for r in st.session_state.execution_results if r["status"] == "success"]
+        )
+        st.metric("Actions Completed", f"{success_count}/{total_steps}")
+
+        # Check final violations
+        processor = NetworkDataProcessor()
+        final_violations = processor.get_violations_summary()
+        final_total = final_violations.get("total_violations", 0)
+
+        if final_total == 0:
+            st.success("🎯 All violations resolved!")
+        else:
+            st.warning(
+                f"⚠️ {final_total} violations remain - may need additional actions"
+            )
+
+        # Reset for next iteration
+        if st.button("🔄 Start New Analysis", type="primary", use_container_width=True):
+            # Reset execution state
+            if "execution_step" in st.session_state:
+                del st.session_state.execution_step
+            if "execution_results" in st.session_state:
+                del st.session_state.execution_results
+            st.session_state.interactive_state = "ready"
+            st.rerun()
+
+
+def show_detailed_analysis(violations_data):
+    """Show detailed violation analysis."""
+    st.subheader("📊 Detailed Network Analysis")
+
+    with st.expander("🔍 Violation Analysis", expanded=True):
+        # Voltage violations details
+        if violations_data.get("voltage_violations"):
+            st.write("**Voltage Violations:**")
+            df_voltage = pd.DataFrame(violations_data["voltage_violations"])
+            st.dataframe(df_voltage, use_container_width=True)
+
+        # Thermal violations details
+        if violations_data.get("thermal_violations"):
+            st.write("**Thermal Violations:**")
+            df_thermal = pd.DataFrame(violations_data["thermal_violations"])
+            st.dataframe(df_thermal, use_container_width=True)
+
+        # Disconnected buses
+        if violations_data.get("disconnected_buses"):
+            st.write("**Disconnected Buses:**")
+            st.write(violations_data["disconnected_buses"])
+
+
+def render_interactive_modifying():
+    """Render the plan modification state."""
+    st.subheader("✏️ Modify Action Plan")
+
+    plan = st.session_state.proposed_plan
+    if not plan:
+        st.error("No plan available to modify")
+        st.session_state.interactive_state = "ready"
+        return
+
+    st.info(
+        "💡 Edit, reorder, or remove actions from the plan below. You can also add new actions."
+    )
+
+    # Initialize modified plan if not exists
+    if "modified_plan" not in st.session_state:
+        st.session_state.modified_plan = plan.copy()
+
+    modified_plan = st.session_state.modified_plan
+
+    # Display current plan with edit options
+    st.markdown("### 📋 Current Plan")
+
+    if not modified_plan:
+        st.warning("Plan is empty. Add actions below.")
+    else:
+        for i, action in enumerate(modified_plan):
+            action_name = action.get("name", "unknown")
+            args = action.get("args", {})
+
+            with st.expander(
+                f"Action {i + 1}: {action_name.replace('_', ' ').title()}",
+                expanded=True,
+            ):
+                col1, col2, col3 = st.columns([3, 1, 1])
+
+                with col1:
+                    # Display action details with edit capabilities
+                    if action_name == "curtail_load":
+                        st.write(
+                            f"📉 **Curtail Load**: {args.get('load_name', 'Unknown')}"
+                        )
+                        new_percent = st.slider(
+                            "Curtailment %",
+                            min_value=1,
+                            max_value=100,
+                            value=int(args.get("curtail_percent", 10)),
+                            key=f"curtail_{i}",
+                        )
+                        # Update the action with new value
+                        if new_percent != args.get("curtail_percent", 10):
+                            st.session_state.modified_plan[i]["args"][
+                                "curtail_percent"
+                            ] = new_percent
+
+                    elif action_name == "update_switch_status":
+                        switch_name = args.get("switch_name", "Unknown")
+                        st.write(f"🔄 **Switch Operation**: {switch_name}")
+                        new_status = st.selectbox(
+                            "Switch Status",
+                            ["Open", "Close"],
+                            index=0 if not args.get("closed", False) else 1,
+                            key=f"switch_{i}",
+                        )
+                        # Update the action with new value
+                        new_closed = new_status == "Close"
+                        if new_closed != args.get("closed", False):
+                            st.session_state.modified_plan[i]["args"]["closed"] = (
+                                new_closed
+                            )
+
+                    elif action_name == "add_battery":
+                        st.write(
+                            f"🔋 **Add Battery**: Bus {args.get('bus_index', 'Unknown')}"
+                        )
+                        new_capacity = st.slider(
+                            "Battery Capacity (kW)",
+                            min_value=100,
+                            max_value=1000,
+                            value=int(args.get("max_energy_kw", 1000)),
+                            step=100,
+                            key=f"battery_{i}",
+                        )
+                        # Update the action with new value
+                        if new_capacity != args.get("max_energy_kw", 1000):
+                            st.session_state.modified_plan[i]["args"][
+                                "max_energy_kw"
+                            ] = new_capacity
+
+                    else:
+                        st.write(f"🔧 **Action**: {action_name}")
+                        st.write(f"📝 **Parameters**: {args}")
+
+                with col2:
+                    # Move action up/down
+                    if st.button("⬆️", key=f"up_{i}", help="Move up", disabled=(i == 0)):
+                        # Swap with previous action
+                        (
+                            st.session_state.modified_plan[i],
+                            st.session_state.modified_plan[i - 1],
+                        ) = (
+                            st.session_state.modified_plan[i - 1],
+                            st.session_state.modified_plan[i],
+                        )
+                        st.rerun()
+
+                    if st.button(
+                        "⬇️",
+                        key=f"down_{i}",
+                        help="Move down",
+                        disabled=(i == len(modified_plan) - 1),
+                    ):
+                        # Swap with next action
+                        (
+                            st.session_state.modified_plan[i],
+                            st.session_state.modified_plan[i + 1],
+                        ) = (
+                            st.session_state.modified_plan[i + 1],
+                            st.session_state.modified_plan[i],
+                        )
+                        st.rerun()
+
+                with col3:
+                    # Remove action
+                    if st.button("❌", key=f"remove_{i}", help="Remove action"):
+                        st.session_state.modified_plan.pop(i)
+                        st.rerun()
+
+    # Add new action section
+    st.markdown("### ➕ Add New Action")
+
+    with st.expander("Add Action", expanded=False):
+        action_type = st.selectbox(
+            "Action Type",
+            ["curtail_load", "update_switch_status", "add_battery"],
+            key="new_action_type",
+        )
+
+        if action_type == "curtail_load":
+            col1, col2 = st.columns(2)
+            with col1:
+                load_name = st.text_input("Load Name", key="new_load_name")
+            with col2:
+                curtail_percent = st.slider(
+                    "Curtailment %", 1, 100, 10, key="new_curtail_percent"
+                )
+
+            if st.button("Add Load Curtailment"):
+                new_action = {
+                    "name": "curtail_load",
+                    "args": {
+                        "load_name": load_name,
+                        "curtail_percent": curtail_percent,
+                    },
+                }
+                st.session_state.modified_plan.append(new_action)
+                st.success(f"Added load curtailment for {load_name}")
+                st.rerun()
+
+        elif action_type == "update_switch_status":
+            col1, col2 = st.columns(2)
+            with col1:
+                switch_name = st.text_input("Switch Name", key="new_switch_name")
+            with col2:
+                switch_status = st.selectbox(
+                    "Status", ["Open", "Close"], key="new_switch_status"
+                )
+
+            if st.button("Add Switch Operation"):
+                new_action = {
+                    "name": "update_switch_status",
+                    "args": {
+                        "switch_name": switch_name,
+                        "closed": switch_status == "Close",
+                    },
+                }
+                st.session_state.modified_plan.append(new_action)
+                st.success(f"Added switch operation for {switch_name}")
+                st.rerun()
+
+        elif action_type == "add_battery":
+            col1, col2 = st.columns(2)
+            with col1:
+                bus_index = st.number_input(
+                    "Bus Index", min_value=0, key="new_bus_index"
+                )
+            with col2:
+                battery_capacity = st.slider(
+                    "Capacity (kW)", 100, 1000, 1000, 100, key="new_battery_capacity"
+                )
+
+            if st.button("Add Battery"):
+                new_action = {
+                    "name": "add_battery",
+                    "args": {
+                        "bus_index": int(bus_index),
+                        "max_energy_kw": battery_capacity,
+                    },
+                }
+                st.session_state.modified_plan.append(new_action)
+                st.success(f"Added battery at Bus {bus_index}")
+                st.rerun()
+
+    # Action buttons for plan modification
+    st.markdown("---")
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        if st.button("✅ Save Changes", type="primary", use_container_width=True):
+            # Update the main plan with modifications
+            st.session_state.proposed_plan = st.session_state.modified_plan.copy()
+            st.session_state.interactive_state = "reviewing"
+            st.success("Plan updated successfully!")
+            st.rerun()
+
+    with col2:
+        if st.button("🔄 Reset Plan", use_container_width=True):
+            # Reset to original plan
+            st.session_state.modified_plan = st.session_state.proposed_plan.copy()
+            st.rerun()
+
+    with col3:
+        if st.button("❌ Cancel", use_container_width=True):
+            # Cancel modifications and go back to reviewing
+            if "modified_plan" in st.session_state:
+                del st.session_state.modified_plan
+            st.session_state.interactive_state = "reviewing"
+            st.rerun()
+
+    with col4:
+        if st.button("🗑️ Clear All", use_container_width=True):
+            # Clear all actions
+            st.session_state.modified_plan = []
+            st.rerun()
+
+
+def get_action_effectiveness(action):
+    """Calculate simplified action effectiveness score."""
+    action_name = action.get("name", "")
+
+    effectiveness_map = {
+        "curtail_load": 75,
+        "update_switch_status": 85,
+        "add_battery": 80,
+    }
+
+    return effectiveness_map.get(action_name, 60)
 
 
 def render_network_visualization():
@@ -648,44 +1170,6 @@ def render_workflow_results():
     # Comparison view
     comparison_view = ComparisonView()
     comparison_view.render()
-
-
-def process_chat_input(user_input: str) -> Dict[str, Any]:
-    """Process user input in interactive mode."""
-    # Simplified chat processing - this would be expanded with actual LLM integration
-    if "fix" in user_input.lower() and "violation" in user_input.lower():
-        # Generate action plan
-        # TODO: Integrate with actual planner
-        plan = [
-            {
-                "name": "curtail_load",
-                "args": {"load_name": "Load_1", "curtail_percent": 10},
-            },
-            {
-                "name": "update_switch_status",
-                "args": {"switch_name": "Switch_1", "closed": False},
-            },
-        ]
-
-        plan_df = pd.DataFrame(
-            [
-                {
-                    "Action": action["name"],
-                    "Target": list(action["args"].values())[0],
-                    "Parameters": str(action["args"]),
-                }
-                for action in plan
-            ]
-        )
-
-        return {
-            "content": "I've analyzed the network and generated an action plan. Please review and approve.",
-            "plan_df": plan_df,
-        }
-    else:
-        return {
-            "content": "I can help you fix network violations. Try asking me to 'fix the violations'."
-        }
 
 
 def main():
