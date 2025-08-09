@@ -370,7 +370,7 @@ def render_network_status():
     # Network health overview
     st.subheader("🏥 Network Health Overview")
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
 
     with col1:
         st.metric(
@@ -402,14 +402,35 @@ def render_network_status():
         )
         st.metric("Thermal Status", thermal_health, help="Thermal violation status")
 
+    with col5:
+        disconnected_health = (
+            "🟢 Connected"
+            if violations.get("disconnected_buses", 0) == 0
+            else f"🔴 {violations.get('disconnected_buses', 0)} Disconnected"
+        )
+        st.metric("Connectivity", disconnected_health, help="Disconnected bus status")
+
     # Detailed violation information
-    if (
-        violations.get("voltage_violations", 0) > 0
-        or violations.get("thermal_violations", 0) > 0
-    ):
+    total_violations = violations.get("total_violations", 0)
+    if total_violations > 0:
         st.markdown('<div class="violation-card">', unsafe_allow_html=True)
+        violation_details = []
+        if violations.get("voltage_violations", 0) > 0:
+            violation_details.append(
+                f"{violations.get('voltage_violations', 0)} voltage"
+            )
+        if violations.get("thermal_violations", 0) > 0:
+            violation_details.append(
+                f"{violations.get('thermal_violations', 0)} thermal"
+            )
+        if violations.get("disconnected_buses", 0) > 0:
+            violation_details.append(
+                f"{violations.get('disconnected_buses', 0)} disconnected bus"
+            )
+
+        violation_text = ", ".join(violation_details)
         st.warning(
-            f"⚠️ Network has {violations.get('total_violations', 0)} violations requiring attention"
+            f"⚠️ Network has {total_violations} violations requiring attention: {violation_text}"
         )
         st.markdown("</div>", unsafe_allow_html=True)
     else:

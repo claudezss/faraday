@@ -119,7 +119,8 @@ class NetworkDataProcessor:
 
             voltage_count = len(violations.voltage)
             thermal_count = len(violations.thermal)
-            total_count = voltage_count + thermal_count
+            disconnected_count = len(violations.disconnected_buses)
+            total_count = voltage_count + thermal_count + disconnected_count
 
             # Calculate health score
             total_elements = len(net.bus) + len(net.line)
