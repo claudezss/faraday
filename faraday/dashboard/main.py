@@ -183,13 +183,6 @@ def get_available_networks() -> List[Tuple[str, str]]:
     """Get list of available test networks with display names and file paths."""
     networks = []
 
-    # Add base networks
-    base_networks_dir = DATA_DIR / "base_networks"
-    if base_networks_dir.exists():
-        for json_file in base_networks_dir.glob("*.json"):
-            display_name = f"📊 Base: {json_file.stem.replace('_', ' ').title()}"
-            networks.append((display_name, str(json_file)))
-
     # Add test networks
     test_networks_dir = DATA_DIR / "test_networks"
     if test_networks_dir.exists():
@@ -343,11 +336,7 @@ def render_sidebar():
         for key, value in session_info.items():
             st.metric(key.replace("_", " ").title(), value)
 
-        # Export options
-        st.subheader("📤 Export")
-        if st.button("Export Results"):
-            # TODO: Implement export functionality
-            st.info("Export functionality coming soon!")
+        # Export functionality removed - not implemented
 
         # Debug info (if in debug mode)
         if st.checkbox("🐛 Debug Mode"):

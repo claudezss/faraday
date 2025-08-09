@@ -43,8 +43,7 @@ class ComparisonView:
         # Detailed analysis
         self._render_detailed_analysis()
 
-        # Export options
-        self._render_export_options()
+        # Export functionality removed - not implemented
 
     def _render_comparison_overview(self):
         """Render high-level comparison overview."""
@@ -232,27 +231,7 @@ class ComparisonView:
         with st.expander("🎯 Effectiveness Analysis"):
             self._render_effectiveness_analysis()
 
-    def _render_export_options(self):
-        """Render export and reporting options."""
-        st.subheader("📤 Export & Reports")
-
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            if st.button("📊 Export Comparison", use_container_width=True):
-                self._export_comparison_data()
-
-        with col2:
-            if st.button("📈 Generate Report", use_container_width=True):
-                self._generate_comparison_report()
-
-        with col3:
-            if st.button("💾 Save Results", use_container_width=True):
-                self._save_results()
-
-        with col4:
-            if st.button("📧 Share Results", use_container_width=True):
-                self._share_results()
+    # Export/save/share functionality removed - not implemented
 
     def _calculate_improvements(self, initial_state: Dict, final_state: Dict) -> Dict:
         """Calculate improvement metrics between states."""
@@ -543,7 +522,7 @@ class ComparisonView:
         st.write("**Statistical Summary:**")
 
         # This would include statistical tests and analysis
-        st.info("Statistical analysis features coming soon!")
+        # Statistical analysis features not implemented
 
         # Placeholder for actual statistical analysis
         analysis_results = {
@@ -610,26 +589,4 @@ class ComparisonView:
 
         return ", ".join(params) if params else "Default"
 
-    def _export_comparison_data(self):
-        """Export comparison data."""
-        st.info("📊 Exporting comparison data...")
-        # Implementation would export to CSV/Excel
-        st.success("✅ Comparison data exported successfully!")
-
-    def _generate_comparison_report(self):
-        """Generate comprehensive comparison report."""
-        st.info("📈 Generating detailed report...")
-        # Implementation would generate PDF report
-        st.success("✅ Report generated successfully!")
-
-    def _save_results(self):
-        """Save analysis results."""
-        st.info("💾 Saving results...")
-        # Implementation would save to database/file
-        st.success("✅ Results saved successfully!")
-
-    def _share_results(self):
-        """Share results with others."""
-        st.info("📧 Preparing shareable results...")
-        # Implementation would create shareable link or email
-        st.success("✅ Results prepared for sharing!")
+    # Export/save/share methods removed - not implemented

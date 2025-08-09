@@ -162,13 +162,7 @@ class ActionPlanEditor:
                 SessionStateManager.clear_current_plan()
                 st.rerun()
 
-        with col2:
-            if st.button("💾 Save Template", help="Save current plan as template"):
-                self._save_plan_template()
-
-        with col3:
-            if st.button("📂 Load Template", help="Load a saved plan template"):
-                self._show_template_loader()
+        # Template save/load functionality removed - not implemented
 
         with col4:
             if st.button("🔍 Validate Plan", help="Check plan feasibility"):
@@ -552,22 +546,4 @@ class ActionPlanEditor:
             except Exception as e:
                 st.error(f"❌ Error executing plan: {e}")
 
-    def _save_plan_template(self):
-        """Save current plan as a template."""
-        current_plan = SessionStateManager.get_current_plan()
-
-        if not current_plan:
-            st.error("❌ No plan to save.")
-            return
-
-        template_name = st.text_input(
-            "Template Name:", placeholder="Enter template name..."
-        )
-        if st.button("💾 Save") and template_name:
-            # This would save to a templates storage system
-            st.success(f"✅ Saved template: {template_name}")
-
-    def _show_template_loader(self):
-        """Show template loading interface."""
-        st.info("📂 Template loading functionality coming soon!")
-        # This would show available templates and allow loading
+    # Template save/load methods removed - not implemented
