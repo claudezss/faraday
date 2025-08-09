@@ -110,30 +110,12 @@ class NetworkVisualization:
                 st.exception(e)
 
     def _create_standard_plot(self, net: pp.pandapowerNet, settings: Dict) -> go.Figure:
-        """Create standard network topology plot."""
+        """Create standard network topology plot using pandapower's pf_res_plotly directly."""
         try:
-            # Use pandapower's built-in plotly functionality
-            fig = pplt.pf_res_plotly(
-                net,
-                on_map=False,
-                projection="epsg:4326",
-                map_style="basic",
-                figsize=1,
-                bus_size=8,
-                line_width=2,
-                trafo_size=10,
-                auto_open=False,
-            )
+            # Use pandapower's pf_res_plotly directly
+            fig = pplt.pf_res_plotly(net)
 
-            # Customize based on color scheme
-            if settings.get("color_scheme") == "Voltage Based":
-                fig = self._apply_voltage_coloring(fig, net)
-            elif settings.get("color_scheme") == "Loading Based":
-                fig = self._apply_loading_coloring(fig, net)
-            elif settings.get("color_scheme") == "Severity Based":
-                fig = self._apply_severity_coloring(fig, net)
-
-            # Update layout
+            # Update layout with custom settings
             fig.update_layout(
                 title=f"Network Topology - {settings.get('plot_type', 'Default')}",
                 showlegend=True,
@@ -142,6 +124,11 @@ class NetworkVisualization:
                 plot_bgcolor="white",
                 paper_bgcolor="white",
             )
+
+            # Apply color customization if needed
+            color_scheme = settings.get("color_scheme", "Default")
+            if color_scheme != "Default":
+                self._apply_color_scheme(fig, net, color_scheme)
 
             return fig
 
@@ -244,24 +231,31 @@ class NetworkVisualization:
 
         return fig
 
-    def _apply_voltage_coloring(
-        self, fig: go.Figure, net: pp.pandapowerNet
+    def _apply_color_scheme(
+        self, fig: go.Figure, net: pp.pandapowerNet, color_scheme: str
     ) -> go.Figure:
-        """Apply voltage-based coloring to the plot."""
-        # This would modify the existing figure to color elements by voltage
-        # Implementation depends on the specific structure of the plotly figure
-        return fig
+        """Apply color scheme to the network plot."""
+        try:
+            # Note: Customizing pf_res_plotly output requires understanding its trace structure
+            # For now, we keep the default pandapower coloring which already shows:
+            # - Bus voltage levels
+            # - Line loading levels
+            # - Different colors for different element types
 
-    def _apply_loading_coloring(
-        self, fig: go.Figure, net: pp.pandapowerNet
-    ) -> go.Figure:
-        """Apply loading-based coloring to the plot."""
-        return fig
+            # Future enhancement: modify specific traces based on color_scheme
+            if color_scheme == "Voltage Based":
+                # Could modify bus marker colors based on voltage levels
+                pass
+            elif color_scheme == "Loading Based":
+                # Could modify line colors based on loading levels
+                pass
+            elif color_scheme == "Severity Based":
+                # Could apply red/yellow/green based on violation severity
+                pass
 
-    def _apply_severity_coloring(
-        self, fig: go.Figure, net: pp.pandapowerNet
-    ) -> go.Figure:
-        """Apply severity-based coloring to the plot."""
+        except Exception as e:
+            st.warning(f"Color scheme customization failed: {e}")
+
         return fig
 
     def _render_analysis_tabs(self):
