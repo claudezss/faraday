@@ -759,10 +759,30 @@ def render_interactive_executing():
         st.session_state.interactive_state = "ready"
         return
 
-    # Initialize execution progress
+    # Initialize execution progress and save initial state
     if "execution_step" not in st.session_state:
         st.session_state.execution_step = 0
         st.session_state.execution_results = []
+
+        # Save initial network state before any modifications
+        import pandapower as pp
+        import copy
+
+        # Save initial network object (deep copy to preserve original state)
+        if st.session_state.network is not None:
+            st.session_state.initial_network_interactive = copy.deepcopy(
+                st.session_state.network
+            )
+
+        # Save initial network file state
+        workflow_state = SessionStateManager.get_workflow_state()
+        if workflow_state and workflow_state.editing_network_file_path:
+            initial_file_path = (
+                workflow_state.work_dir + "/initial_network_interactive.json"
+            )
+            current_net = pp.from_json(workflow_state.editing_network_file_path)
+            pp.to_json(current_net, initial_file_path)
+            st.session_state.initial_network_file_path = initial_file_path
 
     current_step = st.session_state.execution_step
     total_steps = len(plan)
@@ -827,6 +847,11 @@ def render_interactive_executing():
                 st.session_state.execution_results.append(result)
                 st.session_state.execution_step += 1
 
+                # Store executed actions for comparison view
+                if "executed_actions_interactive" not in st.session_state:
+                    st.session_state.executed_actions_interactive = []
+                st.session_state.executed_actions_interactive.append(current_action)
+
                 st.success(f"✅ Completed: {action_name}")
                 st.rerun()
 
@@ -861,13 +886,116 @@ def render_interactive_executing():
                 f"⚠️ {final_total} violations remain - may need additional actions"
             )
 
+        # Show comparison view with before/after results
+        st.markdown("---")
+        st.subheader("📊 Before vs After Comparison")
+
+        # Create a mock workflow result to display the comparison
+        # This simulates the workflow structure that ComparisonView expects
+        if "violations_before" in st.session_state:
+            try:
+                from faraday.agents.workflow.state import (
+                    IterationResult,
+                    State,
+                )
+                from faraday.tools.pandapower import get_violations
+                import pandapower as pp
+
+                # Get current violations after execution
+                workflow_state = SessionStateManager.get_workflow_state()
+                current_net = pp.from_json(workflow_state.editing_network_file_path)
+                current_violations = get_violations(current_net)
+
+                # Get actual executed actions (only successful ones)
+                successful_actions = [
+                    result["action"]
+                    for result in st.session_state.execution_results
+                    if result["status"] == "success"
+                ]
+
+                # Create a mock workflow result for the comparison view
+                mock_iteration = IterationResult(
+                    iter=0,  # Required field
+                    executed_actions=successful_actions,
+                    viola_before=st.session_state.violations_before,
+                    viola_after=current_violations,  # Use actual current violations
+                )
+
+                # Create a temporary workflow state for the comparison
+                mock_workflow_result = State(
+                    network_file_path=workflow_state.network_file_path,
+                    org_network_copy_file_path=workflow_state.org_network_copy_file_path,
+                    editing_network_file_path=workflow_state.editing_network_file_path,
+                    work_dir=workflow_state.work_dir,
+                    messages=workflow_state.messages,
+                    iteration_results=[mock_iteration],
+                    all_executed_actions=successful_actions,
+                )
+
+                # Temporarily store this for ComparisonView and update executed actions
+                original_results = st.session_state.get("workflow_results")
+                original_executed_actions = st.session_state.get("executed_actions")
+
+                # Set temporary state for ComparisonView
+                st.session_state.workflow_results = mock_workflow_result
+                st.session_state.executed_actions = successful_actions
+
+                # Render the comparison view
+                comparison_view = ComparisonView()
+                comparison_view.render()
+
+                # Restore original results
+                if original_results is not None:
+                    st.session_state.workflow_results = original_results
+                elif "workflow_results" in st.session_state:
+                    del st.session_state.workflow_results
+
+                if original_executed_actions is not None:
+                    st.session_state.executed_actions = original_executed_actions
+                elif "executed_actions" in st.session_state:
+                    del st.session_state.executed_actions
+
+            except Exception as e:
+                st.warning(f"Could not display comparison view: {e}")
+                st.info(
+                    "💡 Comparison view is temporarily unavailable, but your actions were executed successfully."
+                )
+
+                # Debug information
+                if st.checkbox("Show debug info", key="debug_comparison"):
+                    st.write("**Debug Info:**")
+                    st.write(
+                        f"- Executed actions available: {'executed_actions_interactive' in st.session_state}"
+                    )
+                    st.write(
+                        f"- Initial network saved: {'initial_network_interactive' in st.session_state}"
+                    )
+                    st.write(
+                        f"- Violations before available: {'violations_before' in st.session_state}"
+                    )
+                    st.write(
+                        f"- Current network available: {st.session_state.get('network') is not None}"
+                    )
+                    if "executed_actions_interactive" in st.session_state:
+                        st.write(
+                            f"- Number of executed actions: {len(st.session_state.executed_actions_interactive)}"
+                        )
+                    st.exception(e)
+
         # Reset for next iteration
         if st.button("🔄 Start New Analysis", type="primary", use_container_width=True):
             # Reset execution state
-            if "execution_step" in st.session_state:
-                del st.session_state.execution_step
-            if "execution_results" in st.session_state:
-                del st.session_state.execution_results
+            keys_to_delete = [
+                "execution_step",
+                "execution_results",
+                "executed_actions_interactive",
+                "initial_network_interactive",
+                "initial_network_file_path",
+                "violations_before",
+            ]
+            for key in keys_to_delete:
+                if key in st.session_state:
+                    del st.session_state[key]
             st.session_state.interactive_state = "ready"
             st.rerun()
 

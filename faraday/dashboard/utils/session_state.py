@@ -125,6 +125,13 @@ class SessionStateManager:
     @staticmethod
     def get_executed_actions() -> List[Dict[str, Any]]:
         """Get executed actions."""
+        # For interactive mode, return interactive actions
+        if (
+            "executed_actions_interactive" in st.session_state
+            and st.session_state.executed_actions_interactive
+        ):
+            return st.session_state.executed_actions_interactive
+        # For auto mode, return workflow executed actions
         return st.session_state.get("executed_actions", [])
 
     @staticmethod
@@ -273,15 +280,38 @@ class SessionStateManager:
     @staticmethod
     def get_initial_network():
         """Get initial network state."""
-        # This would return the original network before any modifications
-        return st.session_state.get("network")  # Simplified for now
+        # Check if we have an interactive mode initial network saved
+        if "initial_network_interactive" in st.session_state:
+            return st.session_state.initial_network_interactive
+
+        # Fallback: try to load from initial file path
+        if "initial_network_file_path" in st.session_state:
+            try:
+                import pandapower as pp
+
+                return pp.from_json(st.session_state.initial_network_file_path)
+            except Exception:
+                pass
+
+        # Final fallback: return current network (for auto mode compatibility)
+        return st.session_state.get("network")
 
     @staticmethod
     def get_final_network():
         """Get final network state after workflow execution."""
+        # For interactive mode, current network IS the final network after actions
+        if (
+            "executed_actions_interactive" in st.session_state
+            and st.session_state.executed_actions_interactive
+        ):
+            return st.session_state.get("network")
+
+        # For auto mode, get from workflow results
         results = st.session_state.get("workflow_results")
         if results and hasattr(results, "editing_network_file_path"):
             try:
+                import pandapower as pp
+
                 return pp.from_json(results.editing_network_file_path)
             except Exception:
                 pass
@@ -291,6 +321,23 @@ class SessionStateManager:
     def get_initial_network_state() -> Dict[str, Any]:
         """Get initial network state metrics."""
         try:
+            # For interactive mode, use stored violations_before
+            if "violations_before" in st.session_state:
+                viola_before = st.session_state.violations_before
+                return {
+                    "voltage_violations": len(viola_before.voltage)
+                    if viola_before.voltage
+                    else 0,
+                    "thermal_violations": len(viola_before.thermal)
+                    if viola_before.thermal
+                    else 0,
+                    "total_violations": (
+                        len(viola_before.voltage) if viola_before.voltage else 0
+                    )
+                    + (len(viola_before.thermal) if viola_before.thermal else 0),
+                }
+
+            # For auto mode, get from workflow results
             workflow_results = st.session_state.get("workflow_results")
             if (
                 workflow_results
@@ -327,6 +374,39 @@ class SessionStateManager:
     def get_final_network_state() -> Dict[str, Any]:
         """Get final network state metrics."""
         try:
+            # For interactive mode, calculate current violations
+            if (
+                "executed_actions_interactive" in st.session_state
+                and st.session_state.executed_actions_interactive
+            ):
+                current_net = st.session_state.get("network")
+                if current_net is not None:
+                    from faraday.tools.pandapower import get_violations
+                    import pandapower as pp
+
+                    # Run power flow to get current state
+                    pp.runpp(current_net)
+                    current_violations = get_violations(current_net)
+                    return {
+                        "voltage_violations": len(current_violations.voltage)
+                        if current_violations.voltage
+                        else 0,
+                        "thermal_violations": len(current_violations.thermal)
+                        if current_violations.thermal
+                        else 0,
+                        "total_violations": (
+                            len(current_violations.voltage)
+                            if current_violations.voltage
+                            else 0
+                        )
+                        + (
+                            len(current_violations.thermal)
+                            if current_violations.thermal
+                            else 0
+                        ),
+                    }
+
+            # For auto mode, get from workflow results
             workflow_results = st.session_state.get("workflow_results")
             if (
                 workflow_results
