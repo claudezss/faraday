@@ -178,6 +178,9 @@ class SessionStateManager:
             executed_actions = result.all_executed_actions
             SessionStateManager.set_executed_actions(executed_actions)
 
+        # Set flag to auto-activate workflow results tab
+        st.session_state.workflow_just_completed = True
+
         SessionStateManager.add_activity(
             "workflow_completed", "Workflow execution completed"
         )

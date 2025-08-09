@@ -410,8 +410,53 @@ def render_auto_mode():
         st.info("⏳ Workflow in progress...")
         # TODO: Add real-time progress tracking
 
-    # Show results if available
-    if SessionStateManager.has_workflow_results():
+    # Always show network visualization if network is loaded
+    if SessionStateManager.has_network():
+        # Create tabs for better organization
+        if SessionStateManager.has_workflow_results():
+            # Check if workflow just completed to auto-select results tab
+            workflow_just_completed = st.session_state.get(
+                "workflow_just_completed", False
+            )
+
+            # Create tabs with conditional default selection
+            if workflow_just_completed:
+                # Auto-select Workflow Results tab after completion
+                tab1, tab2 = st.tabs(
+                    [
+                        "📊 Workflow Results",
+                        "🔍 Network Visualization",
+                    ]
+                )
+
+                # Reset the flag after using it
+                st.session_state.workflow_just_completed = False
+
+                with tab1:
+                    render_workflow_results()
+
+                with tab2:
+                    network_viz = NetworkVisualization()
+                    network_viz.render()
+
+            else:
+                # Normal tab display
+                tab1, tab2 = st.tabs(
+                    ["🔍 Network Visualization", "📊 Workflow Results"]
+                )
+
+                with tab1:
+                    network_viz = NetworkVisualization()
+                    network_viz.render()
+
+                with tab2:
+                    render_workflow_results()
+        else:
+            # If no results yet, just show network visualization
+            network_viz = NetworkVisualization()
+            network_viz.render()
+    elif SessionStateManager.has_workflow_results():
+        # Show only results if no network is loaded
         render_workflow_results()
 
 
