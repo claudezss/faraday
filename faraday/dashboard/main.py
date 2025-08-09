@@ -7,8 +7,8 @@ with both automated and interactive modes.
 
 import json
 import logging
-
-from typing import Dict, Any
+from pathlib import Path
+from typing import Dict, Any, List, Tuple
 
 import streamlit as st
 import pandas as pd
@@ -25,6 +25,7 @@ from faraday.tools.pandapower import (
     get_voltage_thresholds,
     set_voltage_thresholds,
 )
+from faraday import DATA_DIR
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -179,6 +180,52 @@ def apply_custom_styles():
     )
 
 
+def get_available_networks() -> List[Tuple[str, str]]:
+    """Get list of available test networks with display names and file paths."""
+    networks = []
+
+    # Add base networks
+    base_networks_dir = DATA_DIR / "base_networks"
+    if base_networks_dir.exists():
+        for json_file in base_networks_dir.glob("*.json"):
+            display_name = f"📊 Base: {json_file.stem.replace('_', ' ').title()}"
+            networks.append((display_name, str(json_file)))
+
+    # Add test networks
+    test_networks_dir = DATA_DIR / "test_networks"
+    if test_networks_dir.exists():
+        for network_dir in test_networks_dir.iterdir():
+            if network_dir.is_dir():
+                for scenario_dir in network_dir.iterdir():
+                    if scenario_dir.is_dir():
+                        network_file = scenario_dir / "network.json"
+                        if network_file.exists():
+                            # Create friendly display name
+                            network_type = network_dir.name.upper()
+                            scenario = scenario_dir.name.replace("_", " ").title()
+                            display_name = f"🧪 {network_type}: {scenario}"
+                            networks.append((display_name, str(network_file)))
+
+    # Sort by display name
+    networks.sort(key=lambda x: x[0])
+    return networks
+
+
+def load_network_from_path(network_path: str, display_name: str):
+    """Load a network from a file path."""
+    try:
+        with open(network_path, "r") as f:
+            network_data = json.load(f)
+
+        # Extract filename for session state
+        filename = Path(network_path).name
+        SessionStateManager.load_network(network_data, f"{display_name} ({filename})")
+        return True
+    except Exception as e:
+        st.error(f"❌ Error loading network: {e}")
+        return False
+
+
 def render_header():
     """Render the main dashboard header."""
     st.markdown(
@@ -198,20 +245,68 @@ def render_sidebar():
         st.header("⚙️ Configuration")
 
         # Network file management
-        st.subheader("📁 Network Management")
-        uploaded_file = st.file_uploader(
-            "Upload Network File",
-            type=["json"],
-            help="Upload a pandapower network JSON file",
-        )
+        st.subheader("📁 Network Selection")
 
-        if uploaded_file:
-            try:
-                network_data = json.load(uploaded_file)
-                SessionStateManager.load_network(network_data, uploaded_file.name)
-                st.success(f"✅ Loaded: {uploaded_file.name}")
-            except Exception as e:
-                st.error(f"❌ Error loading file: {e}")
+        # Get available networks
+        available_networks = get_available_networks()
+
+        if available_networks:
+            # Create selection options
+            network_options = ["Select a network..."] + [
+                name for name, _ in available_networks
+            ]
+
+            # Use session state to track the current selection to prevent infinite reloads
+            if "selected_network_name" not in st.session_state:
+                st.session_state.selected_network_name = "Select a network..."
+
+            # Determine the current index based on loaded network or default
+            current_network_name = SessionStateManager.get_network_file_name()
+            default_index = 0
+
+            # If a network is already loaded, try to find its index
+            if current_network_name and current_network_name != "Unknown":
+                for i, option in enumerate(network_options):
+                    if isinstance(option, str) and current_network_name in option:
+                        default_index = i
+                        break
+
+            selected_network = st.selectbox(
+                "Choose Network",
+                network_options,
+                index=default_index,
+                help="Select a pre-configured test network from the available options",
+                key="network_selector",
+            )
+
+            # Only load network if selection changed and it's not the placeholder
+            if (
+                selected_network != st.session_state.selected_network_name
+                and selected_network != "Select a network..."
+            ):
+                # Find the corresponding network path
+                network_path = None
+                for name, path in available_networks:
+                    if name == selected_network:
+                        network_path = path
+                        break
+
+                if network_path:
+                    # Load the selected network
+                    if load_network_from_path(network_path, selected_network):
+                        st.session_state.selected_network_name = selected_network
+                        st.success(f"✅ Loaded: {selected_network}")
+                        st.rerun()
+                    else:
+                        # Reset selection on failure
+                        st.session_state.selected_network_name = "Select a network..."
+
+            # Display current network info if loaded
+            if SessionStateManager.has_network():
+                current_name = SessionStateManager.get_network_file_name()
+                st.info(f"📊 Current: {current_name}")
+        else:
+            st.error("❌ No test networks found in data directory")
 
         # Voltage thresholds configuration
         st.subheader("🔋 Voltage Thresholds")
@@ -264,7 +359,7 @@ def render_sidebar():
 def render_network_status():
     """Render network status overview."""
     if not SessionStateManager.has_network():
-        st.info("📁 Please upload a network file to begin analysis.")
+        st.info("📁 Please select a network from the sidebar to begin analysis.")
         return
 
     # Get network metrics
