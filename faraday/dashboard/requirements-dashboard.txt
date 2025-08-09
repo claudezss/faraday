@@ -1,0 +1,30 @@
+# Dashboard Dependencies for Faraday
+# Install with: pip install -r requirements-dashboard.txt
+
+# Core Streamlit and UI
+streamlit>=1.28.0
+streamlit-option-menu>=0.3.6
+streamlit-aggrid>=0.3.4
+streamlit-elements>=0.1.0
+
+# Visualization
+plotly>=5.15.0
+plotly-express>=0.4.1
+
+# Data Processing (if not already included)
+pandas>=1.5.0
+numpy>=1.24.0
+
+# Additional UI components
+streamlit-ace>=0.1.1
+streamlit-camera-input-live>=0.2.0
+streamlit-card>=0.0.5
+streamlit-extras>=0.3.0
+
+# File handling
+openpyxl>=3.1.0  # For Excel export
+fpdf2>=2.7.0     # For PDF generation
+
+# Optional: Enhanced styling and components
+streamlit-lottie>=0.0.5
+streamlit-drawable-canvas>=0.9.0
