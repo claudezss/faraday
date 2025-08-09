@@ -172,6 +172,12 @@ class SessionStateManager:
         """Update workflow results."""
         st.session_state.workflow_results = result
         st.session_state.workflow_state = result
+
+        # Extract and store executed actions from workflow result
+        if hasattr(result, "all_executed_actions"):
+            executed_actions = result.all_executed_actions
+            SessionStateManager.set_executed_actions(executed_actions)
+
         SessionStateManager.add_activity(
             "workflow_completed", "Workflow execution completed"
         )
@@ -281,8 +287,33 @@ class SessionStateManager:
     @staticmethod
     def get_initial_network_state() -> Dict[str, Any]:
         """Get initial network state metrics."""
-        # This would calculate metrics from the original network
-        # Simplified implementation
+        try:
+            workflow_results = st.session_state.get("workflow_results")
+            if (
+                workflow_results
+                and hasattr(workflow_results, "iteration_results")
+                and workflow_results.iteration_results
+            ):
+                # Get violations from first iteration (before any actions)
+                first_iteration = workflow_results.iteration_results[0]
+                if hasattr(first_iteration, "viola_before"):
+                    viola_before = first_iteration.viola_before
+                    return {
+                        "voltage_violations": len(viola_before.voltage)
+                        if viola_before.voltage
+                        else 0,
+                        "thermal_violations": len(viola_before.thermal)
+                        if viola_before.thermal
+                        else 0,
+                        "total_violations": len(viola_before.voltage)
+                        + len(viola_before.thermal)
+                        if viola_before.voltage and viola_before.thermal
+                        else 0,
+                    }
+        except Exception:
+            pass
+
+        # Fallback to stored values or defaults
         return {
             "voltage_violations": st.session_state.get("initial_voltage_violations", 0),
             "thermal_violations": st.session_state.get("initial_thermal_violations", 0),
@@ -292,8 +323,33 @@ class SessionStateManager:
     @staticmethod
     def get_final_network_state() -> Dict[str, Any]:
         """Get final network state metrics."""
-        # This would calculate metrics from the final network
-        # Simplified implementation
+        try:
+            workflow_results = st.session_state.get("workflow_results")
+            if (
+                workflow_results
+                and hasattr(workflow_results, "iteration_results")
+                and workflow_results.iteration_results
+            ):
+                # Get violations from last iteration (after all actions)
+                last_iteration = workflow_results.iteration_results[-1]
+                if hasattr(last_iteration, "viola_after"):
+                    viola_after = last_iteration.viola_after
+                    return {
+                        "voltage_violations": len(viola_after.voltage)
+                        if viola_after.voltage
+                        else 0,
+                        "thermal_violations": len(viola_after.thermal)
+                        if viola_after.thermal
+                        else 0,
+                        "total_violations": len(viola_after.voltage)
+                        + len(viola_after.thermal)
+                        if viola_after.voltage and viola_after.thermal
+                        else 0,
+                    }
+        except Exception:
+            pass
+
+        # Fallback to stored values or defaults
         return {
             "voltage_violations": st.session_state.get("final_voltage_violations", 0),
             "thermal_violations": st.session_state.get("final_thermal_violations", 0),
