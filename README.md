@@ -58,7 +58,7 @@ faraday network.json --verbose --max-iterations 10
 Launch the Streamlit dashboard for interactive network analysis:
 
 ```bash
-streamlit run faraday/dashboard.py
+uv run python scripts/run_dashboard.py
 ```
 
 ### Development
@@ -76,4 +76,21 @@ langgraph dev
 - **Smart Optimization**: Minimizes actions through coordinated interventions
 - **Interactive Dashboard**: Web-based interface for network analysis
 - **CLI Interface**: Command-line tool for batch processing
+
+## Env Variables
+To be able to run the dashboard, you need to set the following environment variables:
+
+```
+OPENAI_API_BASE=https://api.openai.com/v1/
+OPENAI_API_KEY=xxxx
+OPENAI_MODEL=gpt-4.1-mini
+
+GEMINI_API_KEY=xxx
+ANTHROPIC_API_KEY=xxx
+GORK_API_KEY=xxx
+QWEN_API_KEY=xxx
+```
+
+The default LLM model is `gpt-4.1-mini`.
+
  

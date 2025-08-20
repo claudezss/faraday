@@ -155,7 +155,7 @@ class SessionStateManager:
 
         # Extract and store executed actions from workflow result
         if hasattr(result, "all_executed_actions"):
-            executed_actions = result.all_executed_actions
+            executed_actions = result.iteration_results[-1].executed_actions
             SessionStateManager.set_executed_actions(executed_actions)
 
         # Set flag to auto-activate workflow results tab
