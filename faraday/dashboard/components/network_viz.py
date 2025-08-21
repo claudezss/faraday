@@ -113,7 +113,7 @@ class NetworkVisualization:
         """Create standard network topology plot using pandapower's pf_res_plotly directly."""
         try:
             # Use pandapower's pf_res_plotly directly
-            fig = pplt.pf_res_plotly(net)
+            fig = pplt.pf_res_plotly(net, auto_open=False)
 
             # Update layout with custom settings
             fig.update_layout(
