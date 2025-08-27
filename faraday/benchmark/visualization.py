@@ -17,6 +17,7 @@ from matplotlib.gridspec import GridSpec
 plt.style.use("seaborn-v0_8-whitegrid")
 sns.set_palette("husl")
 
+
 # Publication settings
 PAPER_CONFIG = {
     "figure.figsize": (10, 6),
@@ -26,13 +27,21 @@ PAPER_CONFIG = {
     "xtick.labelsize": 10,
     "ytick.labelsize": 10,
     "legend.fontsize": 11,
-    "figure.dpi": 300,
-    "savefig.dpi": 300,
+    "figure.dpi": 700,
+    "savefig.dpi": 700,
     "savefig.bbox": "tight",
     "savefig.pad_inches": 0.1,
 }
 
 plt.rcParams.update(PAPER_CONFIG)
+
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["font.serif"] = ["Times New Roman"]
+plt.rcParams["axes.labelsize"] = 16
+plt.rcParams["xtick.labelsize"] = 16
+plt.rcParams["ytick.labelsize"] = 16
+plt.rcParams["legend.fontsize"] = 16
+plt.rcParams["figure.titlesize"] = 16
 
 
 class BenchmarkVisualizer:
@@ -684,7 +693,7 @@ class BenchmarkVisualizer:
 
     def _create_action_strategy_analysis(self, results: Dict) -> plt.Figure:
         """Analyze action strategies used by different LLMs."""
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+        fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 24))
 
         # Collect action strategy data
         action_usage = {}
@@ -731,7 +740,7 @@ class BenchmarkVisualizer:
             usage_normalized = usage_df.div(usage_df.sum(axis=1), axis=0)
 
             sns.heatmap(usage_normalized, annot=True, fmt=".2f", cmap="Blues", ax=ax1)
-            ax1.set_title("Action Type Usage Patterns", fontweight="bold")
+            ax1.set_title("(a) Action Type Usage Patterns", fontweight="bold")
             ax1.set_ylabel("LLMs")
             ax1.set_xlabel("Action Types")
 
@@ -739,7 +748,7 @@ class BenchmarkVisualizer:
         if coordination_data:
             coord_df = pd.DataFrame(coordination_data)
             sns.boxplot(data=coord_df, x="LLM", y="Coordination Score", ax=ax2)
-            ax2.set_title("Coordination Score Distribution", fontweight="bold")
+            ax2.set_title("(b) Coordination Score Distribution", fontweight="bold")
             ax2.tick_params(axis="x", rotation=45)
 
         # 3. Actions per Solution
@@ -758,10 +767,10 @@ class BenchmarkVisualizer:
         if actions_per_solution:
             actions_df = pd.DataFrame(actions_per_solution, columns=["LLM", "Actions"])
             sns.violinplot(data=actions_df, x="LLM", y="Actions", ax=ax3)
-            ax3.set_title("Actions Required per Solution", fontweight="bold")
+            ax3.set_title("(c) Actions Required per Solution", fontweight="bold")
             ax3.tick_params(axis="x", rotation=45)
 
-        # 4. Strategy Effectiveness (Coordination vs Success Rate)
+        # 4. Strategy Effectiveness (Coordination vs Success Rate) - IMPROVED
         if coordination_data:
             strategy_effectiveness = []
             for llm, llm_results in results["results_by_llm"].items():
@@ -784,38 +793,139 @@ class BenchmarkVisualizer:
 
             if strategy_effectiveness:
                 strategy_df = pd.DataFrame(strategy_effectiveness)
+
+                # Create scatter plot with larger markers
                 _ = ax4.scatter(
                     strategy_df["Avg Coordination"],
                     strategy_df["Success Rate"],
-                    s=100,
+                    s=200,  # Increased marker size
                     alpha=0.7,
                     c=[
                         self.llm_colors.get(llm, "#333333")
                         for llm in strategy_df["LLM"]
                     ],
+                    edgecolors="black",  # Add edge for better visibility
+                    linewidth=1,
                 )
 
-                ax4.set_title("Strategy Effectiveness", fontweight="bold")
+                ax4.set_title("(d) Strategy Effectiveness", fontweight="bold")
                 ax4.set_xlabel("Average Coordination Score")
                 ax4.set_ylabel("Success Rate")
 
-                # Add LLM labels
+                # Add grid for better readability
+                ax4.grid(True, alpha=0.3)
+
+                # Improved label positioning to avoid overlap
+                from adjustText import adjust_text
+
+                texts = []
+
                 for _, row in strategy_df.iterrows():
-                    ax4.annotate(
+                    text = ax4.annotate(
                         row["LLM"],
                         (row["Avg Coordination"], row["Success Rate"]),
-                        xytext=(5, 5),
-                        textcoords="offset points",
-                        fontsize=9,
+                        fontsize=13,  # Increased font size
+                        fontweight="bold",
+                        ha="center",
+                        va="center",
+                        bbox=dict(
+                            boxstyle="round,pad=0.3",
+                            facecolor="white",
+                            alpha=0.8,
+                            edgecolor="gray",
+                            linewidth=0.5,
+                        ),
                     )
+                    texts.append(text)
 
+                # Use adjust_text to prevent overlapping (requires: pip install adjusttext)
+                # If adjusttext is not available, use alternative positioning
+                try:
+                    adjust_text(
+                        texts,
+                        arrowprops=dict(
+                            arrowstyle="->",
+                            connectionstyle="arc3,rad=0.1",
+                            color="gray",
+                            alpha=0.7,
+                            lw=1,
+                        ),
+                    )
+                except ImportError:
+                    # Alternative: manual offset positioning if adjusttext not available
+                    offsets = [
+                        (10, 10),
+                        (-10, 10),
+                        (10, -10),
+                        (-10, -10),
+                        (15, 0),
+                        (-15, 0),
+                        (0, 15),
+                        (0, -15),
+                    ]
+
+                    for i, (_, row) in enumerate(strategy_df.iterrows()):
+                        offset_x, offset_y = offsets[i % len(offsets)]
+                        ax4.annotate(
+                            row["LLM"],
+                            (row["Avg Coordination"], row["Success Rate"]),
+                            xytext=(offset_x, offset_y),
+                            textcoords="offset points",
+                            fontsize=10,
+                            fontweight="bold",
+                            ha="center",
+                            va="center",
+                            bbox=dict(
+                                boxstyle="round,pad=0.3",
+                                facecolor="white",
+                                alpha=0.8,
+                                edgecolor="gray",
+                                linewidth=0.5,
+                            ),
+                            arrowprops=dict(
+                                arrowstyle="->",
+                                connectionstyle="arc3,rad=0.1",
+                                color="gray",
+                                alpha=0.7,
+                                lw=1,
+                            ),
+                        )
+
+                # Set reasonable axis limits with padding
+                x_margin = (
+                    strategy_df["Avg Coordination"].max()
+                    - strategy_df["Avg Coordination"].min()
+                ) * 0.1
+                y_margin = (
+                    strategy_df["Success Rate"].max()
+                    - strategy_df["Success Rate"].min()
+                ) * 0.1
+
+                ax4.set_xlim(
+                    strategy_df["Avg Coordination"].min() - x_margin,
+                    strategy_df["Avg Coordination"].max() + x_margin,
+                )
+                ax4.set_ylim(
+                    strategy_df["Success Rate"].min() - y_margin,
+                    strategy_df["Success Rate"].max() + y_margin,
+                )
+
+        # Align all subplots to the left
         plt.tight_layout()
+        plt.subplots_adjust(left=0.15)  # Increase left margin to align subplots
+
+        # Alternative: More precise alignment using subplot positions
+        # Get current positions and align them
+        for ax in [ax1, ax2, ax3, ax4]:
+            pos = ax.get_position()
+            ax.set_position([0.15, pos.y0, pos.width, pos.height])
+
         plt.suptitle("Action Strategy Analysis", fontsize=16, fontweight="bold", y=1.02)
         return fig
 
     def _create_network_category_performance(self, results: Dict) -> plt.Figure:
         """Create network category performance analysis."""
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+        fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 24))
 
         # Categorize networks by type and complexity
         network_categories = {
@@ -912,7 +1022,7 @@ class BenchmarkVisualizer:
                     ax=ax1,
                     cbar_kws={"label": "Success Rate"},
                 )
-                ax1.set_title("Success Rate by Network Category", fontweight="bold")
+                ax1.set_title("(a) Success Rate by Network Category", fontweight="bold")
 
         # 2. Runtime Performance by Category
         if category_data:
@@ -946,7 +1056,9 @@ class BenchmarkVisualizer:
                     ax=ax2,
                     cbar_kws={"label": "Runtime (seconds)"},
                 )
-                ax2.set_title("Average Runtime by Network Category", fontweight="bold")
+                ax2.set_title(
+                    "(b) Average Runtime by Network Category", fontweight="bold"
+                )
 
         # 3. Action Efficiency by Category
         if category_data:
@@ -958,10 +1070,11 @@ class BenchmarkVisualizer:
                     data=valid_data, x="Category", y="Efficiency", hue="LLM", ax=ax3
                 )
                 ax3.set_title(
-                    "Action Efficiency by Network Category", fontweight="bold"
+                    "(c) Action Efficiency by Network Category", fontweight="bold"
                 )
                 ax3.set_ylabel("Actions per Violation Resolved")
-                ax3.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+                # Adjust legend position for vertical layout
+                ax3.legend(loc="upper left", frameon=True)
 
         # 4. Network Complexity Analysis
         complexity_metrics = []
@@ -997,10 +1110,10 @@ class BenchmarkVisualizer:
                     color=self.llm_colors.get(llm.lower().replace(" ", "-"), "#333333"),
                 )
 
-            ax4.set_title("Runtime vs Network Size", fontweight="bold")
+            ax4.set_title("(d) Runtime vs Network Size", fontweight="bold")
             ax4.set_xlabel("Network Elements (Buses + Lines + Loads)")
             ax4.set_ylabel("Runtime (seconds)")
-            ax4.legend()
+            ax4.legend(loc="best", frameon=True)
             ax4.grid(True, alpha=0.3)
 
         plt.tight_layout()
@@ -1190,7 +1303,7 @@ class BenchmarkVisualizer:
             )
             filepath = self.output_dir / filename
 
-            fig.savefig(filepath, dpi=300, bbox_inches="tight", pad_inches=0.1)
+            fig.savefig(filepath, dpi=700, bbox_inches="tight", pad_inches=0.1)
             saved_files.append(filepath)
 
             # Also save as PDF for publications
